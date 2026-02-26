@@ -1,0 +1,56 @@
+{
+  "name": "mcp-stm-montevideo",
+  "version": "0.1.0",
+  "description": "MCP server for Montevideo's public transit (STM) data",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "mcp-stm-montevideo": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "lint": "eslint src tests --ext .ts",
+    "start": "node dist/index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://local_proxy@127.0.0.1:18516/git/chaba11/mcp-stm-montevideo"
+  },
+  "keywords": [
+    "mcp",
+    "montevideo",
+    "stm",
+    "transit",
+    "bus",
+    "uruguay"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "csv-parse": "^6.1.0",
+    "geolib": "^3.3.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@typescript-eslint/eslint-plugin": "^8.56.1",
+    "@typescript-eslint/parser": "^8.56.1",
+    "eslint": "^10.0.2",
+    "prettier": "^3.8.1",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}
