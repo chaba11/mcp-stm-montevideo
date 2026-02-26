@@ -14,7 +14,8 @@ export class Cache {
    * Setting TTL <= 0 causes the entry to be considered immediately expired.
    */
   set<T>(key: string, value: T, ttlMs: number): void {
-    const expiresAt = ttlMs > 0 ? Date.now() + ttlMs : 0;
+    // TTL <= 0 means immediately expired — use -1 as sentinel
+    const expiresAt = ttlMs > 0 ? Date.now() + ttlMs : -1;
     this.store.set(key, { value, expiresAt });
   }
 
@@ -24,7 +25,8 @@ export class Cache {
   get<T>(key: string): T | undefined {
     const entry = this.store.get(key);
     if (!entry) return undefined;
-    if (entry.expiresAt !== 0 && Date.now() > entry.expiresAt) {
+    // expiresAt === -1 means immediately expired
+    if (entry.expiresAt === -1 || Date.now() > entry.expiresAt) {
       this.store.delete(key);
       return undefined;
     }
