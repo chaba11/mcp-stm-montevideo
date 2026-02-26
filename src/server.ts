@@ -5,6 +5,8 @@ import { dirname, join } from 'path';
 import { registerBuscarParada } from './tools/buscar-parada.js';
 import { registerProximosBuses } from './tools/proximos-buses.js';
 import { registerRecorridoLinea } from './tools/recorrido-linea.js';
+import { registerUbicacionBus } from './tools/ubicacion-bus.js';
+import { registerComoLlegar } from './tools/como-llegar.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -22,6 +24,8 @@ export function createServer(): McpServer {
   registerBuscarParada(server);
   registerProximosBuses(server);
   registerRecorridoLinea(server);
+  registerUbicacionBus(server);
+  registerComoLlegar(server);
 
   return server;
 }
