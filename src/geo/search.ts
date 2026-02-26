@@ -1,18 +1,34 @@
 import type { Parada } from "../types/parada.js";
 
+// Common Spanish abbreviations used in Montevideo street names
+const ABBREVIATIONS: [RegExp, string][] = [
+  [/\bbulevar\b/g, "bv"],
+  [/\bavenida\b/g, "av"],
+  [/\bgeneral\b/g, "gral"],
+  [/\bdoctor\b/g, "dr"],
+  [/\bprofesora?\b/g, "prof"],
+];
+
 /**
  * Normalize text for fuzzy matching:
  * - lowercase
  * - remove diacritics (á→a, ñ→n, etc.)
+ * - expand/contract common abbreviations
  * - collapse multiple spaces
  */
 export function normalizeText(text: string): string {
-  return text
+  let normalized = text
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "") // strip combining diacritics
     .replace(/\s+/g, " ")
     .trim();
+
+  for (const [pattern, replacement] of ABBREVIATIONS) {
+    normalized = normalized.replace(pattern, replacement);
+  }
+
+  return normalized;
 }
 
 export interface ParadaSearchResult extends Parada {
@@ -29,6 +45,8 @@ export function fuzzySearchParadas(query: string, paradas: Parada[]): ParadaSear
   if (!query || paradas.length === 0) return [];
 
   const normalizedQuery = normalizeText(query);
+  if (!normalizedQuery) return [];
+
   const terms = normalizedQuery.split(" ").filter(Boolean);
 
   const results: ParadaSearchResult[] = [];
