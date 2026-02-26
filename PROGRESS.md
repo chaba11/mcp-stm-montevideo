@@ -7,7 +7,7 @@ Este archivo se actualiza al final de cada loop completado.
 - [x] LOOP-00: Project setup
 - [x] LOOP-01: CKAN data exploration
 - [x] LOOP-02: CKAN client + cache
-- [ ] LOOP-02B: Tests — cache & CKAN client (20+ tests, edge cases)
+- [x] LOOP-02B: Tests — cache & CKAN client (20+ tests, edge cases)
 - [ ] LOOP-03: Geo utilities
 - [ ] LOOP-03B: Tests — geo utilities (25+ tests, edge cases)
 - [ ] LOOP-04: Tool buscar_parada
