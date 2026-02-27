@@ -20,13 +20,16 @@ Este archivo se actualiza al final de cada loop completado.
 - [x] LOOP-09: Integration tests con datos reales
 - [x] LOOP-09B: Tests — MCP protocol, e2e scenarios, error resilience (80+ total tests)
 - [x] LOOP-10: Packaging + README + npm prep
+- [x] LOOP-11: REST API wrapper + OpenAPI + Docker (Gemini/ChatGPT compat)
+- [ ] LOOP-11B: Tests — REST API endpoints & OpenAPI (145+ total tests)
 
 ## Test targets
 
-| Milestone | Minimum tests |
-|-----------|--------------|
-| After LOOP-02B | 20 |
-| After LOOP-03B | 45 |
-| After LOOP-05B | 75 |
-| After LOOP-08B | 100 |
-| After LOOP-09B | 120+ |
+| Milestone      | Minimum tests |
+| -------------- | ------------- |
+| After LOOP-02B | 20            |
+| After LOOP-03B | 45            |
+| After LOOP-05B | 75            |
+| After LOOP-08B | 100           |
+| After LOOP-09B | 120+          |
+| After LOOP-11B | 145+          |
