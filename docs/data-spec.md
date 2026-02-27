@@ -190,8 +190,8 @@ horarios (uptu_pasada_variante.csv)
 
 ### URL Stability
 - Direct resource file URLs (e.g. `datos-abiertos.montevideo.gub.uy/uptu_pasada_variante.zip`) are stable
-- Shapefile URLs via `intgis.montevideo.gub.uy/sit/tmp/` are stable
-- Always resolve via `package_show` first in case URLs change
+- Shapefile URLs via `intgis.montevideo.gub.uy/sit/tmp/` are **ephemeral** — the ZIPs are generated on demand by `generar_zip2.php` and periodically cleaned from `/sit/tmp/`, causing 404s if hardcoded
+- URLs are resolved dynamically via CKAN `package_show` → resource URL → (if `generar_zip2.php`) fetch HTML → parse `<form action='...'>` → final ZIP URL
 
 ### Data Freshness
 - Horarios CSV: updated daily at ~04:00 local time

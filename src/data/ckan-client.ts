@@ -9,7 +9,6 @@ import type { LineaVariante } from "../types/linea.js";
 
 const CKAN_BASE = "https://ckan.montevideo.gub.uy/api/3/action";
 
-const TTL_1H = 60 * 60 * 1000;
 const TTL_24H = 24 * 60 * 60 * 1000;
 
 const HORARIOS_PACKAGE = "horarios-de-omnibus-urbanos-por-parada-stm";
@@ -17,10 +16,10 @@ const PARADAS_PACKAGE =
   "transporte-colectivo-paradas-puntos-de-control-y-recorridos-de-omnibus";
 const LINEAS_PACKAGE = "lineas-de-omnibus-origen-y-destino";
 
-// Direct stable URLs (resolved via package_show, cached at module level)
-const HORARIOS_URL = "https://datos-abiertos.montevideo.gub.uy/uptu_pasada_variante.zip";
-const PARADAS_URL = "http://intgis.montevideo.gub.uy/sit/tmp/v_uptu_paradas.zip";
-const LINEAS_URL = "http://intgis.montevideo.gub.uy/sit/tmp/v_uptu_lsv_destinos.zip";
+// Patterns to match the correct resource URL within each CKAN package
+const HORARIOS_RESOURCE_PATTERN = "uptu_pasada_variante";
+const PARADAS_RESOURCE_PATTERN = "v_uptu_paradas";
+const LINEAS_RESOURCE_PATTERN = "v_uptu_lsv_destinos";
 
 export type FetchFn = (url: string) => Promise<{ ok: boolean; status: number; arrayBuffer(): Promise<ArrayBuffer>; text(): Promise<string> }>;
 
@@ -104,6 +103,49 @@ export class CkanClient {
   }
 
   /**
+   * Resolve the actual download URL for a CKAN resource.
+   *
+   * Some resources point directly to .zip files (e.g. datos-abiertos.montevideo.gub.uy).
+   * Others use generar_zip2.php which generates the ZIP on demand and returns HTML
+   * with a <form action='/sit/tmp/X.zip'> redirect. The ZIP in /sit/tmp/ is ephemeral
+   * and may be cleaned up by the server, causing 404s if hardcoded.
+   */
+  private async resolveDownloadUrl(packageId: string, resourcePattern: string): Promise<string> {
+    const resources = await this.getPackageResources(packageId);
+    const resource = resources.find((r) => r.url.includes(resourcePattern));
+    if (!resource) {
+      throw new Error(
+        `No resource matching "${resourcePattern}" found in package "${packageId}". ` +
+          `Available: ${resources.map((r) => r.url).join(", ")}`,
+      );
+    }
+
+    const url = resource.url;
+
+    // Direct download URLs can be used as-is
+    if (!url.includes("generar_zip2")) {
+      return url;
+    }
+
+    // generar_zip2.php generates a ZIP on demand and returns HTML with a form redirect
+    const res = await this.fetchFn(url);
+    if (!res.ok) {
+      throw new Error(`Failed to trigger ZIP generation at ${url}: HTTP ${res.status}`);
+    }
+
+    const html = await res.text();
+    const match = html.match(/action=['"]([^'"]+)['"]/);
+    if (!match) {
+      throw new Error(
+        `Could not parse download URL from generar_zip2 response at ${url}. ` +
+          `Expected HTML with <form action='...'>`,
+      );
+    }
+
+    return new URL(match[1], url).href;
+  }
+
+  /**
    * Returns all stops with WGS84 coordinates.
    * Cached for 24 hours.
    */
@@ -112,10 +154,8 @@ export class CkanClient {
     const cached = this.cache.get<Parada[]>(cacheKey);
     if (cached) return cached;
 
-    // Verify package exists (dynamic URL resolution)
-    await this.getPackageResources(PARADAS_PACKAGE);
-
-    const dbfBuffer = await this.downloadAndExtract(PARADAS_URL, /\.dbf$/i);
+    const downloadUrl = await this.resolveDownloadUrl(PARADAS_PACKAGE, PARADAS_RESOURCE_PATTERN);
+    const dbfBuffer = await this.downloadAndExtract(downloadUrl, /\.dbf$/i);
     const records = parseDbf(dbfBuffer);
 
     const paradas: Parada[] = records.map((r) => {
@@ -145,10 +185,8 @@ export class CkanClient {
     const cached = this.cache.get<HorarioRow[]>(cacheKey);
     if (cached) return cached;
 
-    // Verify package exists (dynamic URL resolution)
-    await this.getPackageResources(HORARIOS_PACKAGE);
-
-    const csvBuffer = await this.downloadAndExtract(HORARIOS_URL, /\.csv$/i);
+    const downloadUrl = await this.resolveDownloadUrl(HORARIOS_PACKAGE, HORARIOS_RESOURCE_PATTERN);
+    const csvBuffer = await this.downloadAndExtract(downloadUrl, /\.csv$/i);
     const csvText = csvBuffer.toString("utf-8");
 
     const rows = parse(csvText, {
@@ -162,7 +200,7 @@ export class CkanClient {
       },
     }) as HorarioRow[];
 
-    this.cache.set(cacheKey, rows, TTL_1H);
+    this.cache.set(cacheKey, rows, TTL_24H);
     return rows;
   }
 
@@ -175,10 +213,8 @@ export class CkanClient {
     const cached = this.cache.get<LineaVariante[]>(cacheKey);
     if (cached) return cached;
 
-    // Verify package exists (dynamic URL resolution)
-    await this.getPackageResources(LINEAS_PACKAGE);
-
-    const dbfBuffer = await this.downloadAndExtract(LINEAS_URL, /\.dbf$/i);
+    const downloadUrl = await this.resolveDownloadUrl(LINEAS_PACKAGE, LINEAS_RESOURCE_PATTERN);
+    const dbfBuffer = await this.downloadAndExtract(downloadUrl, /\.dbf$/i);
     const records = parseDbf(dbfBuffer);
 
     const lineas: LineaVariante[] = records.map((r) => ({
