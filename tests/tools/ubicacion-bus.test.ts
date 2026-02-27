@@ -1,7 +1,29 @@
 import { describe, it, expect, vi } from "vitest";
 import { ubicacionBusHandler } from "../../src/tools/ubicacion-bus.js";
 import { GpsClient } from "../../src/data/gps-client.js";
-import type { GpsResult } from "../../src/data/gps-client.js";
+import type { GpsResult, GpsFetchFn } from "../../src/data/gps-client.js";
+
+const TOKEN_RESPONSE = { access_token: "tok123", expires_in: 3600, token_type: "Bearer" };
+
+/** Returns a mock GpsFetchFn that routes token vs. vehicles URLs to separate responses. */
+function makeFetchFn(
+  tokenOk: boolean,
+  tokenData: unknown,
+  vehiclesOk: boolean,
+  vehiclesData: unknown
+): { fetchFn: GpsFetchFn; tokenCalls: () => number; vehicleCalls: () => number } {
+  let tokenCalls = 0;
+  let vehicleCalls = 0;
+  const fetchFn: GpsFetchFn = async (url: string) => {
+    if (url.includes("mvdapi-auth")) {
+      tokenCalls++;
+      return { ok: tokenOk, status: tokenOk ? 200 : 401, json: async () => tokenData };
+    }
+    vehicleCalls++;
+    return { ok: vehiclesOk, status: vehiclesOk ? 200 : 503, json: async () => vehiclesData };
+  };
+  return { fetchFn, tokenCalls: () => tokenCalls, vehicleCalls: () => vehicleCalls };
+}
 
 function makeGpsClient(result: GpsResult): GpsClient {
   const gps = new GpsClient();
@@ -149,9 +171,107 @@ describe("ubicacion_bus handler", () => {
   });
 
   it("message includes suggestion to use proximos_buses when unavailable", async () => {
-    const gps = new GpsClient(); // real stub
+    const gps = new GpsClient(); // no credentials in test env
     const result = await ubicacionBusHandler({ linea: "181" }, gps);
-    // The stub message should mention horarios or theoretical schedules
+    // The message should mention horarios or theoretical schedules
     expect(result.content[0].text.toLowerCase()).toMatch(/horario|schedule|te[ó|o]rico|ckan/i);
+  });
+
+  // --- Real GPS client (OAuth2) tests ---
+
+  it("returns available=false with env var hint when no credentials configured", async () => {
+    const gps = new GpsClient({ clientId: undefined, clientSecret: undefined });
+    const result = await gps.fetchBusPositions("181");
+    expect(result.available).toBe(false);
+    expect(result.message).toContain("STM_CLIENT_ID");
+  });
+
+  it("returns positions with correct field mapping when token and API succeed", async () => {
+    const vehicles = [
+      {
+        id: 42,
+        timestamp: "2026-02-26T10:00:00-03:00",
+        location: { type: "Point", coordinates: [-56.1505, -34.9145] },
+        destination: "TRES CRUCES",
+        subline: "A",
+        vehicleIdentificationNumber: "BUS-001",
+      },
+    ];
+    const { fetchFn } = makeFetchFn(true, TOKEN_RESPONSE, true, vehicles);
+    const gps = new GpsClient({ clientId: "id", clientSecret: "secret", fetchFn });
+    const result = await gps.fetchBusPositions("181");
+    expect(result.available).toBe(true);
+    expect(result.positions).toHaveLength(1);
+    const p = result.positions![0];
+    expect(p.id_vehiculo).toBe("BUS-001");
+    expect(p.latitud).toBe(-34.9145);   // coordinates[1]
+    expect(p.longitud).toBe(-56.1505);  // coordinates[0]
+    expect(p.destino).toBe("TRES CRUCES");
+    expect(p.velocidad).toBe(0);
+    expect(p.ultimo_reporte).toBe("2026-02-26T10:00:00-03:00");
+  });
+
+  it("uses vehicle id as fallback when vehicleIdentificationNumber is absent", async () => {
+    const vehicles = [
+      { id: 99, timestamp: "2026-02-26T10:00:00-03:00", location: { type: "Point", coordinates: [-56.15, -34.91] } },
+    ];
+    const { fetchFn } = makeFetchFn(true, TOKEN_RESPONSE, true, vehicles);
+    const gps = new GpsClient({ clientId: "id", clientSecret: "secret", fetchFn });
+    const result = await gps.fetchBusPositions("181");
+    expect(result.positions![0].id_vehiculo).toBe("99");
+  });
+
+  it("caches token between consecutive calls", async () => {
+    const { fetchFn, tokenCalls } = makeFetchFn(true, TOKEN_RESPONSE, true, []);
+    const gps = new GpsClient({ clientId: "id", clientSecret: "secret", fetchFn });
+    await gps.fetchBusPositions("181");
+    await gps.fetchBusPositions("181");
+    expect(tokenCalls()).toBe(1);
+  });
+
+  it("returns available=true with empty positions when API returns empty array", async () => {
+    const { fetchFn } = makeFetchFn(true, TOKEN_RESPONSE, true, []);
+    const gps = new GpsClient({ clientId: "id", clientSecret: "secret", fetchFn });
+    const result = await gps.fetchBusPositions("181");
+    expect(result.available).toBe(true);
+    expect(result.positions).toEqual([]);
+  });
+
+  it("filters vehicles by subline when variante is provided", async () => {
+    const vehicles = [
+      { id: 1, timestamp: "2026-02-26T10:00:00-03:00", location: { type: "Point", coordinates: [-56.15, -34.91] }, subline: "A", destination: "NORTE" },
+      { id: 2, timestamp: "2026-02-26T10:00:00-03:00", location: { type: "Point", coordinates: [-56.16, -34.92] }, subline: "B", destination: "SUR" },
+    ];
+    const { fetchFn } = makeFetchFn(true, TOKEN_RESPONSE, true, vehicles);
+    const gps = new GpsClient({ clientId: "id", clientSecret: "secret", fetchFn });
+    const result = await gps.fetchBusPositions("181", "A");
+    expect(result.available).toBe(true);
+    expect(result.positions).toHaveLength(1);
+    expect(result.positions![0].destino).toBe("NORTE");
+  });
+
+  it("returns available=false when token endpoint returns HTTP error", async () => {
+    const { fetchFn } = makeFetchFn(false, {}, true, []);
+    const gps = new GpsClient({ clientId: "id", clientSecret: "secret", fetchFn });
+    const result = await gps.fetchBusPositions("181");
+    expect(result.available).toBe(false);
+    expect(result.message).toContain("Error al consultar GPS");
+  });
+
+  it("returns available=false when vehicles endpoint returns HTTP error", async () => {
+    const { fetchFn } = makeFetchFn(true, TOKEN_RESPONSE, false, {});
+    const gps = new GpsClient({ clientId: "id", clientSecret: "secret", fetchFn });
+    const result = await gps.fetchBusPositions("181");
+    expect(result.available).toBe(false);
+    expect(result.message).toContain("Error al consultar GPS");
+  });
+
+  it("returns available=false when network throws exception", async () => {
+    const fetchFn: GpsFetchFn = async () => { throw new Error("Network error"); };
+    const gps = new GpsClient({ clientId: "id", clientSecret: "secret", fetchFn });
+    const result = await gps.fetchBusPositions("181");
+    expect(result.available).toBe(false);
+    expect(result.message).toContain("Error al consultar GPS");
+    expect(result.message).toContain("Network error");
   });
 });

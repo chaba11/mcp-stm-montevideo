@@ -28,7 +28,10 @@ export function createServer(client?: CkanClient): McpServer {
   registerBuscarParada(server, ckanClient);
   registerProximosBuses(server, ckanClient);
   registerRecorridoLinea(server, ckanClient);
-  registerUbicacionBus(server, new GpsClient());
+  registerUbicacionBus(server, new GpsClient({
+    clientId: process.env.STM_CLIENT_ID,
+    clientSecret: process.env.STM_CLIENT_SECRET,
+  }));
   registerComoLlegar(server, ckanClient);
 
   return server;
