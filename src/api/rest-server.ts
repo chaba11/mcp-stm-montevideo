@@ -104,8 +104,9 @@ export function createRestApp(
 
   // OpenAPI spec
   app.get("/api/openapi.yaml", (c) => {
-    c.header("Content-Type", "text/yaml; charset=utf-8");
-    return c.text(getOpenApiSpec());
+    return c.body(getOpenApiSpec(), {
+      headers: { "Content-Type": "text/yaml; charset=utf-8" },
+    });
   });
 
   // Swagger UI
