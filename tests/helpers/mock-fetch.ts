@@ -92,7 +92,8 @@ export function mockNotFound(urlSubstring: string): UrlHandler {
 export function mockGenerarZipResponse(urlSubstring: string, actionPath: string): UrlHandler {
   return (url) => {
     if (!url.includes(urlSubstring)) return null as never;
-    const html = `<html><body><form name=formito action='${actionPath}'><input type=submit></form></body></html>`;
+    // Matches real generar_zip2.php output: unquoted action, spaces around =
+    const html = `<!-- Generador de archivos descargables -->\nPor favor aguarde...<b>Listo</b><br><body onload='cargar()'>Descargando...<form name=formito action = '${actionPath}'></form></body>`;
     return makeResponse(true, 200, html);
   };
 }
