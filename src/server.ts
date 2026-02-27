@@ -8,6 +8,7 @@ import { registerProximosBuses } from "./tools/proximos-buses.js";
 import { registerRecorridoLinea } from "./tools/recorrido-linea.js";
 import { registerUbicacionBus } from "./tools/ubicacion-bus.js";
 import { GpsClient } from "./data/gps-client.js";
+import { registerComoLlegar } from "./tools/como-llegar.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -28,6 +29,7 @@ export function createServer(client?: CkanClient): McpServer {
   registerProximosBuses(server, ckanClient);
   registerRecorridoLinea(server, ckanClient);
   registerUbicacionBus(server, new GpsClient());
+  registerComoLlegar(server, ckanClient);
 
   return server;
 }
