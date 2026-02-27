@@ -12,12 +12,26 @@ import {
   mockNetworkError,
   mockServerError,
   mockNotFound,
+  mockGenerarZipResponse,
+  mockGenerarZipBadHtml,
 } from "../helpers/mock-fetch.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixturesDir = join(__dirname, "../fixtures");
 
-const FAKE_RESOURCE = [{ id: "abc", name: "Resource", format: "CSV ZIP", url: "" }];
+// Realistic resource URLs per dataset type
+const FAKE_HORARIOS_RESOURCE = [{
+  id: "abc", name: "Horarios por parada", format: "CSV ZIP",
+  url: "https://datos-abiertos.montevideo.gub.uy/uptu_pasada_variante.zip",
+}];
+const FAKE_PARADAS_RESOURCE = [{
+  id: "def", name: "Paradas", format: "Shapefile",
+  url: "http://intgis.montevideo.gub.uy/sit/php/generar_zip2.php?nom_tab=v_uptu_paradas&tipo=gis",
+}];
+const FAKE_LINEAS_RESOURCE = [{
+  id: "ghi", name: "Lineas", format: "Shapefile",
+  url: "http://intgis.montevideo.gub.uy/sit/php/generar_zip2.php?nom_tab=v_uptu_lsv_destinos&tipo=gis",
+}];
 
 describe("CkanClient", () => {
   let cache: Cache;
@@ -96,7 +110,7 @@ describe("CkanClient", () => {
     it("parses horarios CSV from ZIP fixture", async () => {
       const horarioZip = readFileSync(join(fixturesDir, "horarios-sample.zip"));
       const fetchFn = composeFetch(
-        mockAnyPackageResponse(FAKE_RESOURCE),
+        mockAnyPackageResponse(FAKE_HORARIOS_RESOURCE),
         mockBinaryDownload("uptu_pasada_variante.zip", horarioZip)
       );
       const client = new CkanClient({ cache, fetchFn });
@@ -115,7 +129,7 @@ describe("CkanClient", () => {
     it("parses dia_anterior special values S and *", async () => {
       const horarioZip = readFileSync(join(fixturesDir, "horarios-sample.zip"));
       const fetchFn = composeFetch(
-        mockAnyPackageResponse(FAKE_RESOURCE),
+        mockAnyPackageResponse(FAKE_HORARIOS_RESOURCE),
         mockBinaryDownload("uptu_pasada_variante.zip", horarioZip)
       );
       const client = new CkanClient({ cache, fetchFn });
@@ -129,7 +143,7 @@ describe("CkanClient", () => {
       const horarioZip = readFileSync(join(fixturesDir, "horarios-sample.zip"));
       let zipFetchCount = 0;
       const fetchFn = composeFetch(
-        mockAnyPackageResponse(FAKE_RESOURCE),
+        mockAnyPackageResponse(FAKE_HORARIOS_RESOURCE),
         (url) => {
           if (!url.includes("uptu_pasada_variante.zip")) return null as never;
           zipFetchCount++;
@@ -145,7 +159,7 @@ describe("CkanClient", () => {
 
     it("throws on download failure (503)", async () => {
       const fetchFn = composeFetch(
-        mockAnyPackageResponse(FAKE_RESOURCE),
+        mockAnyPackageResponse(FAKE_HORARIOS_RESOURCE),
         mockServerError("uptu_pasada_variante.zip")
       );
       const client = new CkanClient({ cache, fetchFn });
@@ -155,7 +169,7 @@ describe("CkanClient", () => {
     it("parses tipo_dia Saturday and Sunday", async () => {
       const horarioZip = readFileSync(join(fixturesDir, "horarios-sample.zip"));
       const fetchFn = composeFetch(
-        mockAnyPackageResponse(FAKE_RESOURCE),
+        mockAnyPackageResponse(FAKE_HORARIOS_RESOURCE),
         mockBinaryDownload("uptu_pasada_variante.zip", horarioZip)
       );
       const client = new CkanClient({ cache, fetchFn });
@@ -168,7 +182,7 @@ describe("CkanClient", () => {
     it("edge: handles BOM marker in CSV without error", async () => {
       const bomZip = readFileSync(join(fixturesDir, "bom-horarios.zip"));
       const fetchFn = composeFetch(
-        mockAnyPackageResponse(FAKE_RESOURCE),
+        mockAnyPackageResponse(FAKE_HORARIOS_RESOURCE),
         mockBinaryDownload("uptu_pasada_variante.zip", bomZip)
       );
       const client = new CkanClient({ cache, fetchFn });
@@ -181,7 +195,7 @@ describe("CkanClient", () => {
     it("edge: empty CSV returns empty array", async () => {
       const emptyZip = readFileSync(join(fixturesDir, "empty-horarios.zip"));
       const fetchFn = composeFetch(
-        mockAnyPackageResponse(FAKE_RESOURCE),
+        mockAnyPackageResponse(FAKE_HORARIOS_RESOURCE),
         mockBinaryDownload("uptu_pasada_variante.zip", emptyZip)
       );
       const client = new CkanClient({ cache, fetchFn });
@@ -193,7 +207,7 @@ describe("CkanClient", () => {
     it("numeric columns are parsed as numbers not strings", async () => {
       const horarioZip = readFileSync(join(fixturesDir, "horarios-sample.zip"));
       const fetchFn = composeFetch(
-        mockAnyPackageResponse(FAKE_RESOURCE),
+        mockAnyPackageResponse(FAKE_HORARIOS_RESOURCE),
         mockBinaryDownload("uptu_pasada_variante.zip", horarioZip)
       );
       const client = new CkanClient({ cache, fetchFn });
@@ -214,7 +228,8 @@ describe("CkanClient", () => {
     it("parses paradas DBF from ZIP fixture and converts coordinates", async () => {
       const paradasZip = readFileSync(join(fixturesDir, "paradas-sample.zip"));
       const fetchFn = composeFetch(
-        mockAnyPackageResponse(FAKE_RESOURCE),
+        mockAnyPackageResponse(FAKE_PARADAS_RESOURCE),
+        mockGenerarZipResponse("nom_tab=v_uptu_paradas", "/sit/tmp/v_uptu_paradas.zip"),
         mockBinaryDownload("v_uptu_paradas.zip", paradasZip)
       );
       const client = new CkanClient({ cache, fetchFn });
@@ -235,7 +250,8 @@ describe("CkanClient", () => {
     it("decodes Latin-1 street names correctly (CORUÑA)", async () => {
       const paradasZip = readFileSync(join(fixturesDir, "paradas-sample.zip"));
       const fetchFn = composeFetch(
-        mockAnyPackageResponse(FAKE_RESOURCE),
+        mockAnyPackageResponse(FAKE_PARADAS_RESOURCE),
+        mockGenerarZipResponse("nom_tab=v_uptu_paradas", "/sit/tmp/v_uptu_paradas.zip"),
         mockBinaryDownload("v_uptu_paradas.zip", paradasZip)
       );
       const client = new CkanClient({ cache, fetchFn });
@@ -249,7 +265,8 @@ describe("CkanClient", () => {
     it("all parada fields have correct types", async () => {
       const paradasZip = readFileSync(join(fixturesDir, "paradas-sample.zip"));
       const fetchFn = composeFetch(
-        mockAnyPackageResponse(FAKE_RESOURCE),
+        mockAnyPackageResponse(FAKE_PARADAS_RESOURCE),
+        mockGenerarZipResponse("nom_tab=v_uptu_paradas", "/sit/tmp/v_uptu_paradas.zip"),
         mockBinaryDownload("v_uptu_paradas.zip", paradasZip)
       );
       const client = new CkanClient({ cache, fetchFn });
@@ -273,7 +290,8 @@ describe("CkanClient", () => {
     it("parses lineas DBF from ZIP fixture", async () => {
       const lineasZip = readFileSync(join(fixturesDir, "lineas-sample.zip"));
       const fetchFn = composeFetch(
-        mockAnyPackageResponse(FAKE_RESOURCE),
+        mockAnyPackageResponse(FAKE_LINEAS_RESOURCE),
+        mockGenerarZipResponse("nom_tab=v_uptu_lsv_destinos", "/sit/tmp/v_uptu_lsv_destinos.zip"),
         mockBinaryDownload("v_uptu_lsv_destinos.zip", lineasZip)
       );
       const client = new CkanClient({ cache, fetchFn });
@@ -290,7 +308,8 @@ describe("CkanClient", () => {
     it("returns correct structure for all fields", async () => {
       const lineasZip = readFileSync(join(fixturesDir, "lineas-sample.zip"));
       const fetchFn = composeFetch(
-        mockAnyPackageResponse(FAKE_RESOURCE),
+        mockAnyPackageResponse(FAKE_LINEAS_RESOURCE),
+        mockGenerarZipResponse("nom_tab=v_uptu_lsv_destinos", "/sit/tmp/v_uptu_lsv_destinos.zip"),
         mockBinaryDownload("v_uptu_lsv_destinos.zip", lineasZip)
       );
       const client = new CkanClient({ cache, fetchFn });
@@ -311,7 +330,8 @@ describe("CkanClient", () => {
     it("finds line 181 in fixture", async () => {
       const lineasZip = readFileSync(join(fixturesDir, "lineas-sample.zip"));
       const fetchFn = composeFetch(
-        mockAnyPackageResponse(FAKE_RESOURCE),
+        mockAnyPackageResponse(FAKE_LINEAS_RESOURCE),
+        mockGenerarZipResponse("nom_tab=v_uptu_lsv_destinos", "/sit/tmp/v_uptu_lsv_destinos.zip"),
         mockBinaryDownload("v_uptu_lsv_destinos.zip", lineasZip)
       );
       const client = new CkanClient({ cache, fetchFn });
@@ -323,6 +343,67 @@ describe("CkanClient", () => {
     });
   });
 
+  // ── dynamic URL resolution ──────────────────────────────────────────────────
+
+  describe("dynamic URL resolution", () => {
+    it("returns direct .zip URL without extra fetch (horarios)", async () => {
+      const horarioZip = readFileSync(join(fixturesDir, "horarios-sample.zip"));
+      const fetchedUrls: string[] = [];
+      const fetchFn = composeFetch(
+        (url) => { fetchedUrls.push(url); return null as never; },
+        mockAnyPackageResponse(FAKE_HORARIOS_RESOURCE),
+        mockBinaryDownload("uptu_pasada_variante.zip", horarioZip)
+      );
+      const client = new CkanClient({ cache, fetchFn });
+
+      await client.getHorarios();
+      // Should NOT have fetched any generar_zip2 URL
+      expect(fetchedUrls.some((u) => u.includes("generar_zip2"))).toBe(false);
+    });
+
+    it("resolves generar_zip2 URL by parsing HTML form action (paradas)", async () => {
+      const paradasZip = readFileSync(join(fixturesDir, "paradas-sample.zip"));
+      const fetchedUrls: string[] = [];
+      const fetchFn = composeFetch(
+        (url) => { fetchedUrls.push(url); return null as never; },
+        mockAnyPackageResponse(FAKE_PARADAS_RESOURCE),
+        mockGenerarZipResponse("nom_tab=v_uptu_paradas", "/sit/tmp/v_uptu_paradas.zip"),
+        mockBinaryDownload("v_uptu_paradas.zip", paradasZip)
+      );
+      const client = new CkanClient({ cache, fetchFn });
+
+      await client.getParadas();
+      // Should have fetched generar_zip2 URL
+      expect(fetchedUrls.some((u) => u.includes("generar_zip2"))).toBe(true);
+      // Should have fetched the resolved /sit/tmp/ URL
+      expect(fetchedUrls.some((u) => u.includes("/sit/tmp/v_uptu_paradas.zip"))).toBe(true);
+    });
+
+    it("throws when generar_zip2 returns HTML without form action", async () => {
+      const fetchFn = composeFetch(
+        mockAnyPackageResponse(FAKE_PARADAS_RESOURCE),
+        mockGenerarZipBadHtml("nom_tab=v_uptu_paradas")
+      );
+      const client = new CkanClient({ cache, fetchFn });
+
+      await expect(client.getParadas()).rejects.toThrow(
+        "Could not parse download URL from generar_zip2 response"
+      );
+    });
+
+    it("throws when no resource matches pattern in package", async () => {
+      const wrongResources = [{ id: "xyz", name: "Wrong", format: "CSV", url: "http://example.com/other.zip" }];
+      const fetchFn = composeFetch(
+        mockAnyPackageResponse(wrongResources)
+      );
+      const client = new CkanClient({ cache, fetchFn });
+
+      await expect(client.getParadas()).rejects.toThrow(
+        'No resource matching "v_uptu_paradas"'
+      );
+    });
+  });
+
   // ── clearCache ───────────────────────────────────────────────────────────────
 
   describe("clearCache", () => {
@@ -330,7 +411,7 @@ describe("CkanClient", () => {
       const horarioZip = readFileSync(join(fixturesDir, "horarios-sample.zip"));
       let zipFetchCount = 0;
       const fetchFn = composeFetch(
-        mockAnyPackageResponse(FAKE_RESOURCE),
+        mockAnyPackageResponse(FAKE_HORARIOS_RESOURCE),
         (url) => {
           if (!url.includes("uptu_pasada_variante.zip")) return null as never;
           zipFetchCount++;

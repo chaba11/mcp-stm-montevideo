@@ -88,6 +88,23 @@ export function mockNotFound(urlSubstring: string): UrlHandler {
   };
 }
 
+/** Mock a generar_zip2.php response that returns HTML with a form redirect */
+export function mockGenerarZipResponse(urlSubstring: string, actionPath: string): UrlHandler {
+  return (url) => {
+    if (!url.includes(urlSubstring)) return null as never;
+    const html = `<html><body><form name=formito action='${actionPath}'><input type=submit></form></body></html>`;
+    return makeResponse(true, 200, html);
+  };
+}
+
+/** Mock a generar_zip2.php response with invalid HTML (no form action) */
+export function mockGenerarZipBadHtml(urlSubstring: string): UrlHandler {
+  return (url) => {
+    if (!url.includes(urlSubstring)) return null as never;
+    return makeResponse(true, 200, "<html><body>Error generating file</body></html>");
+  };
+}
+
 /** Simulate a slow/timeout response */
 export function mockTimeout(urlSubstring: string, delayMs: number): UrlHandler {
   return (url) => {
