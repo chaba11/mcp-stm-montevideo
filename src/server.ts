@@ -5,6 +5,7 @@ import { join, dirname } from "node:path";
 import { CkanClient } from "./data/ckan-client.js";
 import { registerBuscarParada } from "./tools/buscar-parada.js";
 import { registerProximosBuses } from "./tools/proximos-buses.js";
+import { registerRecorridoLinea } from "./tools/recorrido-linea.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -23,6 +24,7 @@ export function createServer(client?: CkanClient): McpServer {
   // Register MCP tools
   registerBuscarParada(server, ckanClient);
   registerProximosBuses(server, ckanClient);
+  registerRecorridoLinea(server, ckanClient);
 
   return server;
 }
