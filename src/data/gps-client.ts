@@ -11,6 +11,7 @@ export interface BusPosition {
   latitud: number;
   longitud: number;
   velocidad: number;
+  cod_variante: number;
   destino: string;
   ultimo_reporte: string; // ISO 8601
 }
@@ -60,6 +61,8 @@ interface VehicleItem {
   subline?: string;
   line?: string;
   vehicleIdentificationNumber?: string;
+  speed?: number;
+  lineVariantId?: number;
 }
 
 interface UpcomingBusApiItem {
@@ -148,7 +151,8 @@ export class GpsClient {
         id_vehiculo: v.vehicleIdentificationNumber ?? String(v.id),
         latitud: v.location.coordinates[1],
         longitud: v.location.coordinates[0],
-        velocidad: 0,
+        velocidad: v.speed ?? 0,
+        cod_variante: v.lineVariantId ?? 0,
         destino: v.destination ?? v.subline ?? "",
         ultimo_reporte: v.timestamp,
       }));

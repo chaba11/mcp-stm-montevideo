@@ -3,7 +3,7 @@ import { CkanClient } from "../../src/data/ckan-client.js";
 import { Cache } from "../../src/data/cache.js";
 import { proximosBusesHandler } from "../../src/tools/proximos-buses.js";
 import { GpsClient } from "../../src/data/gps-client.js";
-import type { UpcomingBusesResult } from "../../src/data/gps-client.js";
+import type { UpcomingBusesResult, GpsResult } from "../../src/data/gps-client.js";
 import { StopMapper } from "../../src/data/stop-mapper.js";
 import { PARADAS_GEO } from "../fixtures/paradas-geo.js";
 import { LINEAS_FIXTURE } from "../fixtures/schedule-data.js";
@@ -735,5 +735,131 @@ describe("proximos_buses — StopMapper integration", () => {
 
     // Without mapper, CKAN ID 300 is used directly
     expect(gps.fetchUpcomingBuses).toHaveBeenCalledWith(300, ["181"], 3);
+  });
+});
+
+describe("proximos_buses — GPS-estimated ETA fallback", () => {
+  const FRESH_TS = new Date("2026-02-25T12:59:00Z").toISOString(); // 1 min before NOW
+
+  function makeMockGpsWithPositions(
+    upcomingResult: UpcomingBusesResult,
+    positionsResult: GpsResult
+  ): GpsClient {
+    const gps = new GpsClient({ clientId: "test", clientSecret: "test" });
+    gps.fetchUpcomingBuses = vi.fn().mockResolvedValue(upcomingResult);
+    gps.fetchBusPositions = vi.fn().mockResolvedValue(positionsResult);
+    return gps;
+  }
+
+  it("uses gps_estimado when upcomingBuses is empty but GPS positions exist", async () => {
+    const client = createMockClient();
+    const now = new Date("2026-02-25T13:00:00Z"); // 10:00 MVD
+
+    // Bus at parada 300 (ordinal 1), target is also 300 → won't work
+    // Bus near parada 300's coords but route goes 300→301→302
+    // Place bus between stop 300 and 301 (before 301)
+    const gps = makeMockGpsWithPositions(
+      { available: true, buses: [] }, // upcomingBuses empty
+      {
+        available: true,
+        positions: [
+          {
+            id_vehiculo: "V-100",
+            latitud: -34.9100, // between stop 300 (-34.9145) and 301 (-34.9060)
+            longitud: -56.1700,
+            velocidad: 25,
+            cod_variante: 5200,
+            destino: "TRES CRUCES",
+            ultimo_reporte: FRESH_TS,
+          },
+        ],
+      }
+    );
+
+    // Target parada 302 (ordinal 3) — bus should have ETA to reach it
+    const result = await proximosBusesHandler(
+      { parada_id: 302, linea: "181", cantidad: 3 },
+      client,
+      gps,
+      now
+    );
+    const parsed = JSON.parse(result.content[0].text) as Array<{
+      fuente: string;
+      linea: string;
+      minutos_restantes: number;
+    }>;
+
+    expect(parsed.length).toBeGreaterThan(0);
+    expect(parsed[0].fuente).toBe("gps_estimado");
+    expect(parsed[0].linea).toBe("181");
+    expect(parsed[0].minutos_restantes).toBeGreaterThan(0);
+  });
+
+  it("falls back to horario_planificado when both upcomingBuses and positions are empty", async () => {
+    const client = createMockClient();
+    const now = montevideoTime(10, 0, "monday");
+
+    const gps = makeMockGpsWithPositions(
+      { available: true, buses: [] },
+      { available: true, positions: [] }
+    );
+
+    const result = await proximosBusesHandler(
+      { parada_id: 300, linea: "181", cantidad: 3 },
+      client,
+      gps,
+      now
+    );
+    const parsed = JSON.parse(result.content[0].text) as Array<{ fuente: string }>;
+
+    expect(parsed.length).toBeGreaterThan(0);
+    for (const b of parsed) {
+      expect(b.fuente).toBe("horario_planificado");
+    }
+  });
+
+  it("falls back to horario_planificado when fetchBusPositions fails", async () => {
+    const client = createMockClient();
+    const now = montevideoTime(10, 0, "monday");
+
+    const gps = new GpsClient({ clientId: "test", clientSecret: "test" });
+    gps.fetchUpcomingBuses = vi.fn().mockResolvedValue({ available: true, buses: [] });
+    gps.fetchBusPositions = vi.fn().mockRejectedValue(new Error("Network error"));
+
+    const result = await proximosBusesHandler(
+      { parada_id: 300, linea: "181", cantidad: 3 },
+      client,
+      gps,
+      now
+    );
+    const parsed = JSON.parse(result.content[0].text) as Array<{ fuente: string }>;
+
+    expect(parsed.length).toBeGreaterThan(0);
+    for (const b of parsed) {
+      expect(b.fuente).toBe("horario_planificado");
+    }
+  });
+
+  it("never calls fetchBusPositions when upcomingBuses has data", async () => {
+    const client = createMockClient();
+    const now = montevideoTime(10, 0, "monday");
+
+    const gps = new GpsClient({ clientId: "test", clientSecret: "test" });
+    gps.fetchUpcomingBuses = vi.fn().mockResolvedValue({
+      available: true,
+      buses: [
+        { linea: "181", destino: "CENTRO", eta_segundos: 120, distancia_metros: 500 },
+      ],
+    });
+    gps.fetchBusPositions = vi.fn();
+
+    await proximosBusesHandler(
+      { parada_id: 300, linea: "181", cantidad: 3 },
+      client,
+      gps,
+      now
+    );
+
+    expect(gps.fetchBusPositions).not.toHaveBeenCalled();
   });
 });

@@ -6,6 +6,7 @@ import type { StopMapper } from "../data/stop-mapper.js";
 import { getNextBuses } from "../data/schedule.js";
 import { findNearestParadas } from "../geo/distance.js";
 import { geocodeIntersection } from "../geo/geocode.js";
+import { estimateEtaFromPositions } from "../geo/route-eta.js";
 import { fuzzySearchParadas } from "../geo/search.js";
 import type { Parada } from "../types/parada.js";
 
@@ -24,7 +25,7 @@ export interface ProximoBusResult {
   horario_estimado: string;
   minutos_restantes: number;
   parada_nombre: string;
-  fuente: "tiempo_real" | "horario_planificado";
+  fuente: "tiempo_real" | "gps_estimado" | "horario_planificado";
 }
 
 export interface ToolResponse {
@@ -183,6 +184,63 @@ export async function proximosBusesHandler(
               };
             });
           return textResponse(JSON.stringify(output, null, 2));
+        }
+
+        // upcomingBuses returned empty — try GPS position-based ETA estimation
+        const paradas = await client.getParadas();
+        const gpsLines = queryLines.slice(0, 5); // limit parallel calls
+        const positionResults = await Promise.all(
+          gpsLines.map((l) => gps.fetchBusPositions(l).catch(() => null))
+        );
+
+        const allPositions = positionResults.flatMap((r) =>
+          r && r.available && r.positions ? r.positions : []
+        );
+
+        if (allPositions.length > 0) {
+          // Collect route paradas for all CKAN variants of the queried lines.
+          // GPS lineVariantId may not match CKAN codVariante exactly,
+          // so we include all variants — estimateEtaFromPositions handles the matching.
+          const lineVariantes = new Set(
+            lineas
+              .filter((l) => gpsLines.includes(l.descLinea))
+              .map((l) => l.codVariante)
+          );
+          const routeParadas = paradas.filter((p) => lineVariantes.has(p.variante));
+
+          // Each fetchBusPositions(line) already returns only buses for that line,
+          // so no further variant filtering needed here.
+          const allEstimates = gpsLines.flatMap((lineName) =>
+            estimateEtaFromPositions(
+              paradaId,
+              allPositions,
+              routeParadas,
+              lineName,
+              currentTime
+            )
+          );
+
+          if (allEstimates.length > 0) {
+            allEstimates.sort((a, b) => a.eta_segundos - b.eta_segundos);
+            const output: ProximoBusResult[] = allEstimates
+              .slice(0, cantidad)
+              .map((est) => {
+                const arrival = new Date(currentTime.getTime() + est.eta_segundos * 1000);
+                const mvdTime = new Date(arrival.toLocaleString("en-US", { timeZone: "America/Montevideo" }));
+                const mvdHH = String(mvdTime.getHours()).padStart(2, "0");
+                const mvdMM = String(mvdTime.getMinutes()).padStart(2, "0");
+                return {
+                  linea: est.linea,
+                  variante: 0,
+                  destino: est.destino,
+                  horario_estimado: `${mvdHH}:${mvdMM}`,
+                  minutos_restantes: Math.round(est.eta_segundos / 60),
+                  parada_nombre: paradaNombre,
+                  fuente: "gps_estimado" as const,
+                };
+              });
+            return textResponse(JSON.stringify(output, null, 2));
+          }
         }
       }
     } catch {
