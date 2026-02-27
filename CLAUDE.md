@@ -40,13 +40,8 @@ npm run build && npm run test && npm run lint
 
 ## Filosofía de testing
 
-- Cada módulo feature (LOOP-XX) va seguido de un loop de tests (LOOP-XXB)
 - Los test loops buscan edge cases activamente: datos vacíos, encoding, timezone, errores de red, tipos incorrectos
 - Si un test descubre un bug → ARREGLAR el código en el mismo loop, no skipear el test
 - Cada bug arreglado por un test → agregar un test de regresión al unit test correspondiente
 - Target: 120+ tests al final del proyecto
 - Tests de performance para routing: < 2s con red completa, < 5s con 500 paradas
-
-## Estado actual del proyecto
-
-Revisar `PROGRESS.md` para saber qué loops se completaron.
