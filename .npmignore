@@ -1,0 +1,28 @@
+# Source files (only dist is published)
+src/
+tests/
+loops/
+docs/
+stm-ralph-plan/
+
+# Config files
+tsconfig.json
+tsup.config.ts
+eslint.config.js
+.prettierrc
+vitest.config.ts
+CLAUDE.md
+PROGRESS.md
+PROMPT.md
+run-loops.sh
+
+# Git
+.git/
+.gitignore
+
+# Node development
+node_modules/
+
+# IDE
+.vscode/
+.cursor/
