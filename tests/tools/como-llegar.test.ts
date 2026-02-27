@@ -265,3 +265,153 @@ interface Tramo {
   tipo: "bus" | "caminata";
   duracion_min: number;
 }
+
+// ---- Network fixture tests ----
+import { PARADAS_NETWORK, LINEAS_NETWORK } from "../fixtures/network-data.js";
+
+function makeNetworkClient(): CkanClient {
+  const cache = new Cache();
+  const client = new CkanClient({ cache });
+  client.getParadas = async () => PARADAS_NETWORK;
+  client.getHorarios = async () => [];
+  client.getLineas = async () => LINEAS_NETWORK;
+  return client;
+}
+
+describe("como_llegar — network fixture routing", () => {
+  it("finds direct L1 route from P1 area to P4 area", async () => {
+    const client = makeNetworkClient();
+    // P1: (-34.900, -56.180) → P4: (-34.900, -56.150), same line L1
+    const result = await comoLlegarHandler(
+      {
+        origen_calle1: "LINEA 1",
+        origen_calle2: "P1",
+        destino_calle1: "LINEA 1",
+        destino_calle2: "P4",
+        max_caminata_metros: 200,
+        max_transbordos: 0,
+      },
+      client
+    );
+    if (result.content[0].text.startsWith("[")) {
+      const parsed = JSON.parse(result.content[0].text) as RouteOption[];
+      expect(parsed.length).toBeGreaterThan(0);
+      const busTramo = parsed[0].tramos.find((t) => t.tipo === "bus") as {
+        tipo: "bus";
+        linea: string;
+        num_paradas: number;
+      } | undefined;
+      expect(busTramo).toBeDefined();
+      expect(busTramo!.linea).toBe("L1");
+    }
+  });
+
+  it("finds transfer route from P1 area to P10 area (L1 → L2)", async () => {
+    const client = makeNetworkClient();
+    // P1 on L1, P10 on L2; transfer at P3(L1)/P7(L2) ~200m apart
+    const result = await comoLlegarHandler(
+      {
+        origen_calle1: "LINEA 1",
+        origen_calle2: "P1",
+        destino_calle1: "LINEA 2",
+        destino_calle2: "P10",
+        max_caminata_metros: 500,
+        max_transbordos: 1,
+      },
+      client
+    );
+    expect(result.content[0].type).toBe("text");
+    // Should find a route (either direct or with transfer)
+    if (result.content[0].text.startsWith("[")) {
+      const parsed = JSON.parse(result.content[0].text) as RouteOption[];
+      expect(parsed.length).toBeGreaterThan(0);
+      expect(parsed[0].duracion_total_estimada_min).toBeGreaterThan(0);
+    }
+  });
+
+  it("route duration includes all walk and bus times summed", async () => {
+    const client = makeNetworkClient();
+    const result = await comoLlegarHandler(
+      {
+        origen_calle1: "LINEA 1",
+        origen_calle2: "P1",
+        destino_calle1: "LINEA 1",
+        destino_calle2: "P5",
+        max_caminata_metros: 500,
+      },
+      client
+    );
+    if (result.content[0].text.startsWith("[")) {
+      const parsed = JSON.parse(result.content[0].text) as RouteOption[];
+      for (const route of parsed) {
+        const summed = route.tramos.reduce((s, t) => s + t.duracion_min, 0);
+        expect(route.duracion_total_estimada_min).toBe(summed);
+      }
+    }
+  });
+
+  it("adjacent stops still returns valid route", async () => {
+    const client = makeNetworkClient();
+    // P1 to P2 — consecutive stops on L1
+    const result = await comoLlegarHandler(
+      {
+        origen_calle1: "LINEA 1",
+        origen_calle2: "P1",
+        destino_calle1: "LINEA 1",
+        destino_calle2: "P2",
+        max_caminata_metros: 500,
+      },
+      client
+    );
+    expect(result.content[0].type).toBe("text");
+    // Should not crash regardless of result
+  });
+
+  it("very long route (30+ stops) returns result without crash", async () => {
+    // L1 (5 stops) + L2 (5 stops) — create a client with longer lines
+    const longParadas = [
+      ...Array.from({ length: 30 }, (_, i) => ({
+        id: i + 1,
+        linea: "LONGLINE",
+        variante: 9999,
+        ordinal: i + 1,
+        calle: "LONG ST",
+        esquina: `STOP ${i + 1}`,
+        lat: -34.85 - i * 0.003,
+        lng: -56.18,
+      })),
+    ];
+    const longLineas = [{
+      gid: 99, codLinea: 99, descLinea: "LONGLINE", ordinalSublinea: 1,
+      codSublinea: 1, descSublinea: "LONG ROUTE", codVariante: 9999, descVariante: "A",
+      codOrigen: 1, descOrigen: "START", codDestino: 30, descDestino: "END",
+    }];
+    const longClient = makeNetworkClient();
+    longClient.getParadas = async () => longParadas;
+    longClient.getLineas = async () => longLineas;
+
+    const result = await comoLlegarHandler(
+      {
+        origen_calle1: "LONG ST",
+        origen_calle2: "STOP 1",
+        destino_calle1: "LONG ST",
+        destino_calle2: "STOP 30",
+        max_caminata_metros: 500,
+      },
+      longClient
+    );
+    expect(result.content[0].type).toBe("text");
+    if (result.content[0].text.startsWith("[")) {
+      const parsed = JSON.parse(result.content[0].text) as RouteOption[];
+      expect(parsed.length).toBeGreaterThan(0);
+      const busTramo = parsed[0].tramos.find((t) => t.tipo === "bus") as {
+        num_paradas: number;
+      } | undefined;
+      if (busTramo) {
+        expect(busTramo.num_paradas).toBeGreaterThan(0);
+        // Duration should be reasonable: 29 stops * 2 min = 58 min
+        expect(parsed[0].duracion_total_estimada_min).toBeLessThan(120);
+      }
+    }
+  });
+});

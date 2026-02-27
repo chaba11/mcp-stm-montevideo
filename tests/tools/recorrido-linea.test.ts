@@ -141,4 +141,57 @@ describe("recorrido_linea handler", () => {
     // PARADAS_FIXTURE parada 300 has esquina "LIBERTAD"
     expect(nombres.some((n) => n.includes(" y "))).toBe(true);
   });
+
+  it("returns all variants that have stops when no variant filter", async () => {
+    // Line 181 variants: LINEAS_FIXTURE has A(5200) and B(5201),
+    // but PARADAS_FIXTURE only has stops for variant A (5200).
+    // Only variants with stops should appear.
+    const result = await recorridoLineaHandler({ linea: "181" }, client);
+    const parsed = JSON.parse(result.content[0].text) as Array<{ variante: string }>;
+    expect(parsed.length).toBeGreaterThan(0);
+    for (const r of parsed) {
+      expect(typeof r.variante).toBe("string");
+    }
+    // Variant A should appear since it has paradas
+    const variantes = parsed.map((r) => r.variante);
+    expect(variantes).toContain("A");
+  });
+
+  it("frecuencia_promedio_minutos is null when no horarios", async () => {
+    const noHorariosClient = createMockClient({ horarios: [] });
+    const result = await recorridoLineaHandler({ linea: "181", variante: "A" }, noHorariosClient);
+    const parsed = JSON.parse(result.content[0].text) as Array<{
+      frecuencia_promedio_minutos: number | null;
+    }>;
+    expect(parsed[0].frecuencia_promedio_minutos).toBeNull();
+  });
+
+  it("handles whitespace-only linea", async () => {
+    const result = await recorridoLineaHandler({ linea: "   " }, client);
+    expect(result.content[0].text).toContain("Proporciona");
+  });
+});
+
+describe("recorrido_linea — network fixture", () => {
+  it("returns L1 route with 5 stops in order", async () => {
+    const { createMockClient: mkClient } = await import("./__helpers__/tool-test-utils.js");
+    const { PARADAS_NETWORK, LINEAS_NETWORK, HORARIOS_NETWORK } = await import("../fixtures/network-data.js");
+    const client = mkClient({ paradas: PARADAS_NETWORK, lineas: LINEAS_NETWORK, horarios: HORARIOS_NETWORK });
+    const result = await recorridoLineaHandler({ linea: "L1" }, client);
+    const parsed = JSON.parse(result.content[0].text) as Array<{
+      paradas: Array<{ parada_id: number; orden: number }>;
+      frecuencia_promedio_minutos: number | null;
+    }>;
+    expect(parsed.length).toBeGreaterThan(0);
+    const l1 = parsed[0];
+    expect(l1.paradas.length).toBe(5);
+    // Stops should be in ordinal order
+    for (let i = 1; i < l1.paradas.length; i++) {
+      expect(l1.paradas[i].orden).toBeGreaterThan(l1.paradas[i - 1].orden);
+    }
+    // Frequency should be ~15 min (schedule every 15 min)
+    if (l1.frecuencia_promedio_minutos !== null) {
+      expect(l1.frecuencia_promedio_minutos).toBeCloseTo(15, 0);
+    }
+  });
 });

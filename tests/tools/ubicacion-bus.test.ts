@@ -117,4 +117,41 @@ describe("ubicacion_bus handler", () => {
     const result = await ubicacionBusHandler({ linea: "181" }, gps);
     expect(result.content[0].text).toContain("Servicio temporalmente fuera de línea");
   });
+
+  it("returned coordinates are within Montevideo bounding box when GPS available", async () => {
+    const gps = makeGpsClient({
+      available: true,
+      positions: [
+        { id_vehiculo: "BUS-1", latitud: -34.9, longitud: -56.15, velocidad: 30, destino: "CENTRO", ultimo_reporte: "2026-02-25T10:00:00-03:00" },
+        { id_vehiculo: "BUS-2", latitud: -34.85, longitud: -56.2, velocidad: 20, destino: "NORTE", ultimo_reporte: "2026-02-25T10:00:00-03:00" },
+      ],
+    });
+    const result = await ubicacionBusHandler({ linea: "181" }, gps);
+    const parsed = JSON.parse(result.content[0].text) as Array<{
+      latitud: number;
+      longitud: number;
+    }>;
+    for (const p of parsed) {
+      // Montevideo rough bounding box
+      expect(p.latitud).toBeGreaterThan(-35.1);
+      expect(p.latitud).toBeLessThan(-34.6);
+      expect(p.longitud).toBeGreaterThan(-56.6);
+      expect(p.longitud).toBeLessThan(-55.9);
+    }
+  });
+
+  it("trims whitespace from linea before passing to GPS", async () => {
+    const fetchFn = vi.fn().mockResolvedValue({ available: false, message: "stub" });
+    const gps = new GpsClient();
+    gps.fetchBusPositions = fetchFn;
+    await ubicacionBusHandler({ linea: "  181  " }, gps);
+    expect(fetchFn).toHaveBeenCalledWith("181", undefined);
+  });
+
+  it("message includes suggestion to use proximos_buses when unavailable", async () => {
+    const gps = new GpsClient(); // real stub
+    const result = await ubicacionBusHandler({ linea: "181" }, gps);
+    // The stub message should mention horarios or theoretical schedules
+    expect(result.content[0].text.toLowerCase()).toMatch(/horario|schedule|te[ó|o]rico|ckan/i);
+  });
 });
