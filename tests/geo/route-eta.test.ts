@@ -86,6 +86,20 @@ describe("estimateEtaFromPositions", () => {
     expect(result.length).toBe(0);
   });
 
+  it("excludes bus with invalid timestamp (regression: was producing NaN ETA)", () => {
+    const bus = makeBus({ ultimo_reporte: "invalid-date-string" });
+    const result = estimateEtaFromPositions(4, [bus], ROUTE_PARADAS, "181", NOW);
+
+    expect(result.length).toBe(0);
+  });
+
+  it("excludes bus with empty timestamp string (regression: was producing NaN ETA)", () => {
+    const bus = makeBus({ ultimo_reporte: "" });
+    const result = estimateEtaFromPositions(4, [bus], ROUTE_PARADAS, "181", NOW);
+
+    expect(result.length).toBe(0);
+  });
+
   it("falls back to all variants when cod_variante does not match any route", () => {
     const bus = makeBus({ cod_variante: 999 }); // no matching paradas for this exact variant
     const result = estimateEtaFromPositions(4, [bus], ROUTE_PARADAS, "181", NOW);

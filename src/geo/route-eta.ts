@@ -90,8 +90,11 @@ export function estimateEtaFromPositions(
   }
 
   for (const bus of busPositions) {
-    // Skip stale data
+    // Skip buses with invalid or stale timestamps
     const reportTime = new Date(bus.ultimo_reporte).getTime();
+    if (isNaN(reportTime)) {
+      continue;
+    }
     const reportAgeMs = currentTime.getTime() - reportTime;
     if (reportAgeMs > STALE_THRESHOLD_MS) {
       continue;

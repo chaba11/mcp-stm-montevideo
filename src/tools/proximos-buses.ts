@@ -149,44 +149,43 @@ export async function proximosBusesHandler(
       }
 
       if (queryLines.length > 0) {
-        // Resolve the GPS busstopId if a mapper is available
-        let gpsBusstopId = paradaId;
+        // Resolve the GPS busstopId if a mapper is available.
+        // If mapper can't find a match, skip fetchUpcomingBuses but still try position-based ETA.
+        let gpsBusstopId: number | null = paradaId;
         if (stopMapper) {
           const paradas = await client.getParadas();
           const parada = paradas.find((p) => p.id === paradaId);
           if (parada) {
-            const resolved = await stopMapper.resolveGpsBusstopId(paradaId, parada.lat, parada.lng);
-            if (resolved === null) {
-              throw new Error("No matching GPS busstop found");
-            }
-            gpsBusstopId = resolved;
+            gpsBusstopId = await stopMapper.resolveGpsBusstopId(paradaId, parada.lat, parada.lng);
           }
         }
 
-        const rtResult = await gps.fetchUpcomingBuses(gpsBusstopId, queryLines, cantidad);
-        if (rtResult.available && rtResult.buses && rtResult.buses.length > 0) {
-          const output: ProximoBusResult[] = rtResult.buses
-            .slice(0, cantidad)
-            .map((b) => {
-              const arrival = new Date(currentTime.getTime() + b.eta_segundos * 1000);
-              // Convert arrival to Montevideo time for display
-              const mvdTime = new Date(arrival.toLocaleString("en-US", { timeZone: "America/Montevideo" }));
-              const mvdHH = String(mvdTime.getHours()).padStart(2, "0");
-              const mvdMM = String(mvdTime.getMinutes()).padStart(2, "0");
-              return {
-                linea: b.linea,
-                variante: 0,
-                destino: b.destino,
-                horario_estimado: `${mvdHH}:${mvdMM}`,
-                minutos_restantes: Math.round(b.eta_segundos / 60),
-                parada_nombre: paradaNombre,
-                fuente: "tiempo_real" as const,
-              };
-            });
-          return textResponse(JSON.stringify(output, null, 2));
+        if (gpsBusstopId !== null) {
+          const rtResult = await gps.fetchUpcomingBuses(gpsBusstopId, queryLines, cantidad);
+          if (rtResult.available && rtResult.buses && rtResult.buses.length > 0) {
+            const output: ProximoBusResult[] = rtResult.buses
+              .slice(0, cantidad)
+              .map((b) => {
+                const arrival = new Date(currentTime.getTime() + b.eta_segundos * 1000);
+                // Convert arrival to Montevideo time for display
+                const mvdTime = new Date(arrival.toLocaleString("en-US", { timeZone: "America/Montevideo" }));
+                const mvdHH = String(mvdTime.getHours()).padStart(2, "0");
+                const mvdMM = String(mvdTime.getMinutes()).padStart(2, "0");
+                return {
+                  linea: b.linea,
+                  variante: 0,
+                  destino: b.destino,
+                  horario_estimado: `${mvdHH}:${mvdMM}`,
+                  minutos_restantes: Math.round(b.eta_segundos / 60),
+                  parada_nombre: paradaNombre,
+                  fuente: "tiempo_real" as const,
+                };
+              });
+            return textResponse(JSON.stringify(output, null, 2));
+          }
         }
 
-        // upcomingBuses returned empty — try GPS position-based ETA estimation
+        // upcomingBuses empty or skipped — try GPS position-based ETA estimation
         const paradas = await client.getParadas();
         const gpsLines = queryLines.slice(0, 5); // limit parallel calls
         const positionResults = await Promise.all(
