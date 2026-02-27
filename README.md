@@ -1,131 +1,159 @@
-# Ralph Loop Plan — MCP STM Montevideo
+# mcp-stm-montevideo
 
-## Qué es esto
+**ES:** Servidor MCP para el Sistema de Transporte Metropolitano (STM) de Montevideo, Uruguay. Permite que los LLMs respondan preguntas sobre horarios, recorridos y paradas del transporte público.
 
-Un plan para construir `mcp-stm-montevideo` de forma 100% autónoma usando Claude Code con ralph loops. Cada loop es una tarea atómica con criterios de aceptación verificables.
+**EN:** MCP server for Montevideo's Metropolitan Transit System (STM). Lets LLMs answer questions about bus schedules, routes, and stops in real time.
 
-## Setup inicial
+---
 
-```bash
-# 1. Crear el directorio del proyecto
-mkdir mcp-stm-montevideo && cd mcp-stm-montevideo
-
-# 2. Copiar los archivos del plan al proyecto
-cp /ruta/a/este/plan/CLAUDE.md .
-cp /ruta/a/este/plan/PROGRESS.md .
-cp -r /ruta/a/este/plan/loops/ .
-cp /ruta/a/este/plan/run-loops.sh .
-chmod +x run-loops.sh
-
-# 3. Git init
-git init
-```
-
-## Opción A: Full auto (correr todo de una)
+## Instalación / Installation
 
 ```bash
-./run-loops.sh
+npx mcp-stm-montevideo
 ```
 
-Esto corre los 11 loops en secuencia. Si uno falla, reintenta hasta 3 veces. Si sigue fallando, para y te dice cuál arreglar.
+Los datos se descargan automáticamente desde los datos abiertos de la Intendencia de Montevideo (CKAN) y se cachean en memoria.
 
-Para retomar desde un loop específico:
+*Data is downloaded automatically from Montevideo's open data portal (CKAN) and cached in memory.*
+
+---
+
+## Configuración / Configuration
+
+### Claude Desktop
+
+Agrega esto a `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
+```json
+{
+  "mcpServers": {
+    "stm-montevideo": {
+      "command": "npx",
+      "args": ["-y", "mcp-stm-montevideo"]
+    }
+  }
+}
+```
+
+### Cursor
+
+En `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "stm-montevideo": {
+      "command": "npx",
+      "args": ["-y", "mcp-stm-montevideo"]
+    }
+  }
+}
+```
+
+### Claude Code
+
+En `.mcp.json` en la raíz de tu proyecto:
+
+```json
+{
+  "mcpServers": {
+    "stm-montevideo": {
+      "command": "npx",
+      "args": ["-y", "mcp-stm-montevideo"]
+    }
+  }
+}
+```
+
+---
+
+## Herramientas disponibles / Available Tools
+
+| Herramienta | Descripción |
+|-------------|-------------|
+| `buscar_parada` | Busca paradas cercanas a una dirección, intersección o coordenadas GPS |
+| `proximos_buses` | Muestra los próximos ómnibus que pasan por una parada |
+| `recorrido_linea` | Muestra el recorrido completo de una línea con todas sus paradas |
+| `ubicacion_bus` | Posición en tiempo real de una línea (cuando esté disponible) |
+| `como_llegar` | Calcula la mejor ruta en transporte público entre dos puntos |
+
+---
+
+## Ejemplos de uso / Usage Examples
+
+**¿Cuándo pasa el próximo 181?**
+> "¿A qué hora pasa el próximo 181 por Bv España y Libertad?"
+
+```
+→ buscar_parada(calle1="Bv España", calle2="Libertad")
+→ proximos_buses(parada_id=..., linea="181")
+```
+
+**¿Qué líneas pasan cerca?**
+> "¿Qué líneas de ómnibus pasan cerca de Tres Cruces?"
+
+```
+→ buscar_parada(latitud=-34.893, longitud=-56.163, radio_metros=300)
+```
+
+**¿Cómo llego en bondi?**
+> "¿Cómo llego de Ciudad Vieja a Pocitos en ómnibus?"
+
+```
+→ como_llegar(origen_calle1="Ciudad Vieja", destino_calle1="Pocitos")
+```
+
+**Ver el recorrido completo de una línea**
+> "¿Cuáles son todas las paradas de la línea D10?"
+
+```
+→ recorrido_linea(linea="D10")
+```
+
+---
+
+## Fuentes de datos / Data Sources
+
+Los datos provienen de los **Datos Abiertos de la Intendencia de Montevideo**:
+
+- [Portal CKAN](https://ckan.montevideo.gub.uy) — `datos-abiertos.montevideo.gub.uy`
+- Dataset horarios: `horarios-de-omnibus-urbanos-por-parada-stm`
+- Dataset paradas: coordenadas en EPSG:32721 (UTM Zone 21S), convertidas a WGS84
+- Dataset recorridos y líneas: origen/destino de cada variante
+
+Los datos se actualizan automáticamente (cache de 1h para horarios, 24h para paradas y líneas).
+
+*Data comes from Montevideo's open data portal (Intendencia de Montevideo). Schedules cached for 1h, stops and routes for 24h.*
+
+---
+
+## Desarrollo / Development
 
 ```bash
-./run-loops.sh 5  # arranca desde LOOP-05
+git clone https://github.com/chaba11/mcp-stm-montevideo
+cd mcp-stm-montevideo
+npm install
+npm run build
+npm run test
+npm run lint
 ```
 
-## Opción B: Un loop a la vez (recomendado la primera vez)
-
-Más control. Correr cada loop manualmente:
+Para ejecutar los tests de integración con datos reales (requiere internet):
 
 ```bash
-# Correr un loop específico
-cat loops/LOOP-00.md | claude --dangerously-skip-permissions
-
-# Verificar que pasó
-grep "LOOP-00" PROGRESS.md
-
-# Siguiente
-cat loops/LOOP-01.md | claude --dangerously-skip-permissions
+npm run test:integration
 ```
 
-## Opción C: Con el Ralph Wiggum plugin de Claude Code
+---
 
-Si tenés el plugin instalado:
+## Contribuir / Contributing
 
-```bash
-claude
+Los issues y pull requests son bienvenidos. Los bugs encontrados con datos reales son especialmente valiosos.
 
-# Dentro de Claude Code:
-> Read CLAUDE.md and PROGRESS.md, then execute the next incomplete loop from the loops/ directory. 
-> Follow the task steps exactly, run the acceptance criteria, and mark it done in PROGRESS.md.
-> When complete, output: <promise>COMPLETE</promise>
-```
+*Issues and pull requests welcome. Bugs found with real data are especially valuable.*
 
-## Los 16 loops
+---
 
-| Loop | Qué hace | Tests |
-|------|----------|-------|
-| LOOP-00 | Scaffolding del proyecto TypeScript + MCP SDK | 1 smoke |
-| LOOP-01 | Explorar datasets del CKAN de Montevideo | — |
-| LOOP-02 | Cliente CKAN + sistema de cache | — |
-| **LOOP-02B** | **Tests cache & CKAN client: edge cases, encoding, errors** | **20+** |
-| LOOP-03 | Utilidades geográficas (distancia, geocoding) | — |
-| **LOOP-03B** | **Tests geo: coords, diacríticos, abbreviations, ambiguity** | **25+** |
-| LOOP-04 | Tool `buscar_parada` | — |
-| LOOP-05 | Tool `proximos_buses` (feature estrella) | — |
-| **LOOP-05B** | **Tests tools: timezone, midnight rollover, schedule edge cases** | **30+** |
-| LOOP-06 | Tool `recorrido_linea` | — |
-| LOOP-07 | Tool `ubicacion_bus` (GPS tiempo real) | — |
-| LOOP-08 | Tool `como_llegar` (routing con transbordos) | — |
-| **LOOP-08B** | **Tests routing: transfers, circular lines, perf benchmarks** | **50+ cumul** |
-| LOOP-09 | Tests de integración con datos reales | live data |
-| **LOOP-09B** | **Tests MCP protocol, e2e scenarios, error resilience** | **80+ cumul** |
-| LOOP-10 | Packaging npm + README + CI | final |
+## Licencia / License
 
-**Target final: 120+ tests** cubriendo unit, integration, e2e, protocol, y performance.
-
-**Total estimado: ~5-6 horas de tokens de Claude** (algo más que sin tests, pero con mucha más confianza).
-
-## Principios ralph aplicados
-
-1. **Un task por loop**: Cada loop hace UNA cosa. No se mezclan concerns.
-2. **Contexto fresco**: Cada loop arranca leyendo CLAUDE.md y PROGRESS.md. No arrastra contexto viejo.
-3. **Verificación automática**: Cada loop tiene `Acceptance Criteria` con comandos bash que verifican el resultado.
-4. **Falla → reintenta**: Si no pasa los criterios, el runner reintenta con contexto limpio.
-5. **Progreso persistente**: PROGRESS.md + git commits aseguran que el trabajo no se pierde entre loops.
-6. **Minimal allocation**: CLAUDE.md es corto a propósito. Los detalles están en el loop task y en los archivos del proyecto (que Claude Code lee del filesystem).
-7. **Tests como gate**: Cada módulo feature va seguido de un loop de tests (B-loops). Los tests buscan edge cases y si encuentran bugs, los arreglan. No se avanza si los tests no pasan.
-8. **Bug = regresión**: Todo bug encontrado por un test genera un fix + un test de regresión permanente.
-
-## Después de completar
-
-```bash
-# Verificar que todo funciona
-npm run build && npm run test && npm run lint
-
-# Test manual del MCP server
-echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | node dist/index.js
-
-# Publicar a npm
-npm publish
-
-# Probar con Claude Desktop
-# Agregar a ~/Library/Application Support/Claude/claude_desktop_config.json:
-# {
-#   "mcpServers": {
-#     "stm-montevideo": {
-#       "command": "npx",
-#       "args": ["-y", "mcp-stm-montevideo"]
-#     }
-#   }
-# }
-```
-
-## Tips
-
-- **LOOP-01 es clave**: Si la exploración de datos no sale bien, todos los loops siguientes van a tener problemas. Revisá `docs/data-spec.md` antes de seguir.
-- **LOOP-07 puede quedar stub**: La API de GPS en tiempo real de la IM puede no ser pública. No te trabes ahí.
-- **LOOP-09 es donde se rompe todo**: Los integration tests con datos reales siempre descubren edge cases. Está bien que este loop tarde más.
-- **Costo estimado**: ~$15-30 USD en tokens de Claude (Sonnet) para los 16 loops completos. Los B-loops (tests) gastan más tokens que los feature loops porque generan más código.
+MIT © 2026 chaba11
