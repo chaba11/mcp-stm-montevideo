@@ -196,3 +196,30 @@ horarios (uptu_pasada_variante.csv)
 ### Data Freshness
 - Horarios CSV: updated daily at ~04:00 local time
 - Shapefiles: updated less frequently (weekly/monthly)
+
+---
+
+## 6. Real-time GPS
+
+**Research Date:** 2026-02-26
+
+### Findings
+
+The Intendencia de Montevideo (IM) operates a real-time bus GPS tracking system used by the "Cómo Ir" and "ComoMeMuevo" apps. However, **no public, unauthenticated API endpoint has been identified**.
+
+Known facts:
+- The app `comomemuevo.uy` and mobile apps access real-time positions via a proprietary API
+- The API appears to require OAuth or similar authentication (session cookies from the IM portal)
+- The CKAN open data catalog (`ckan.montevideo.gub.uy`) does not expose a real-time GPS resource
+- The `montevidata.montevideo.gub.uy` portal shows live positions in the browser but uses authenticated websocket/SSE connections
+- No public REST endpoint documentation has been found
+
+### Current Implementation
+
+The `ubicacion_bus` tool uses a **stub implementation** that returns an availability flag set to `false`. When a public GPS API becomes available, replace the `GpsClient.fetchBusPositions()` implementation.
+
+### Potential Future Integration
+
+- Watch for changes in `https://datos-abiertos.montevideo.gub.uy` for new real-time datasets
+- The IM may publish a public API in the future as part of their open data initiative
+- Third-party datasets (e.g., OpenStreetMap, Transitland) may provide GTFS-RT feeds
