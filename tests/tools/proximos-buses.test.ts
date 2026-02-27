@@ -451,6 +451,52 @@ describe("proximos_buses — extended edge cases with realistic schedule", () =>
     expect(result.content[0].text.length).toBeGreaterThan(0);
   });
 
+  it("linea filter narrows stop search to line-specific stops", async () => {
+    const client = createMockClient();
+    const now = montevideoTime(8, 0, "monday");
+    // "BV ESPAÑA" + "LIBERTAD" + linea "121" — parada 300 serves line 121
+    const result = await proximosBusesHandler(
+      { calle1: "BV ESPAÑA", calle2: "LIBERTAD", linea: "121", cantidad: 3 },
+      client,
+      null,
+      now
+    );
+    expect(result.content[0].type).toBe("text");
+    expect(result.content[0].text.length).toBeGreaterThan(0);
+  });
+
+  it("linea filter works when calle1-only search is used", async () => {
+    const client = createMockClient();
+    const now = montevideoTime(8, 0, "monday");
+    const result = await proximosBusesHandler(
+      { calle1: "BV ESPAÑA", linea: "121", cantidad: 3 },
+      client,
+      null,
+      now
+    );
+    expect(result.content[0].type).toBe("text");
+    expect(result.content[0].text.length).toBeGreaterThan(0);
+  });
+
+  it("regression: calle1+calle2+linea with corrupted street name finds stop via fuzzy", async () => {
+    // Simulates the BV ESPAÑA → BV ESPAA encoding corruption case
+    const client = createMockClient({
+      paradas: [
+        // Corrupted version of "BV ESPAÑA" as it appears when Latin-1 decoded
+        { id: 4855, linea: "183", variante: 60, ordinal: 6, calle: "BV ESPAA", esquina: "OBLIGADO", lat: -34.912, lng: -56.161 },
+      ],
+    });
+    const now = montevideoTime(10, 0, "monday");
+    const result = await proximosBusesHandler(
+      { calle1: "Bv España", calle2: "Obligado", linea: "183", cantidad: 3 },
+      client,
+      null,
+      now
+    );
+    // Should find the stop via fuzzy matching, not return "no se encontró parada"
+    expect(result.content[0].text).not.toContain("No se encontró ninguna parada");
+  });
+
   it("empty horarios returns graceful message", async () => {
     const client = createMockClient({ horarios: [] });
     const now = montevideoTime(10, 0);

@@ -60,18 +60,28 @@ function textResponse(text: string): ToolResponse {
 async function resolveParadaId(
   calle1: string,
   calle2: string | undefined,
-  paradas: Parada[]
+  paradas: Parada[],
+  linea?: string
 ): Promise<{ id: number; nombre: string } | null> {
+  // When a line is known, prefer stops on that line for better precision.
+  // This also helps when encoding corruption breaks intersection search on the full dataset,
+  // since the smaller filtered set may match differently.
+  const lineParadas = linea ? paradas.filter((p) => p.linea === linea) : [];
+  const primaryPool = lineParadas.length > 0 ? lineParadas : paradas;
+
   if (calle2) {
-    const point = await geocodeIntersection(calle1, calle2, paradas);
+    // Try against line-specific stops first, then fall back to all stops
+    const point =
+      (await geocodeIntersection(calle1, calle2, primaryPool)) ??
+      (lineParadas.length > 0 ? await geocodeIntersection(calle1, calle2, paradas) : null);
     if (!point) return null;
-    const nearest = findNearestParadas(point.lat, point.lon, paradas, 500, 1);
+    const nearest = findNearestParadas(point.lat, point.lon, primaryPool, 500, 1);
     if (nearest.length === 0) return null;
     const p = nearest[0];
     return { id: p.id, nombre: `${p.calle}${p.esquina ? " y " + p.esquina : ""}` };
   }
 
-  const matches = fuzzySearchParadas(calle1, paradas);
+  const matches = fuzzySearchParadas(calle1, primaryPool);
   if (matches.length === 0) return null;
   const best = matches[0];
   return { id: best.id, nombre: `${best.calle}${best.esquina ? " y " + best.esquina : ""}` };
@@ -98,7 +108,7 @@ export async function proximosBusesHandler(
     paradaNombre = `Parada ${paradaId}`;
   } else if (calle1) {
     const paradas = await client.getParadas();
-    const resolved = await resolveParadaId(calle1, calle2, paradas);
+    const resolved = await resolveParadaId(calle1, calle2, paradas, linea);
     if (!resolved) {
       return textResponse(
         `No se encontró ninguna parada en "${calle1}${calle2 ? " y " + calle2 : ""}".`

@@ -36,9 +36,52 @@ function allTokensMatch(query: string, target: string): boolean {
   return tokens.length > 0 && tokens.every((t) => target.includes(t));
 }
 
+/** Compute Levenshtein edit distance between two strings. */
+export function levenshteinDistance(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  const prev = Array.from({ length: n + 1 }, (_, j) => j);
+  const curr = new Array<number>(n + 1);
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      curr[j] =
+        a[i - 1] === b[j - 1]
+          ? prev[j - 1]
+          : 1 + Math.min(prev[j], curr[j - 1], prev[j - 1]);
+    }
+    prev.splice(0, n + 1, ...curr);
+  }
+  return prev[n];
+}
+
+/**
+ * Like allTokensMatch but allows 1-edit-distance tolerance for tokens ≥ 4 chars.
+ * Handles encoding corruption (e.g. "espana" matching corrupted "espaa")
+ * and minor typos.
+ */
+export function allTokensFuzzyMatch(query: string, target: string): boolean {
+  const queryTokens = query.split(" ").filter(Boolean);
+  if (queryTokens.length === 0) return false;
+  const targetWords = target.split(" ").filter(Boolean);
+  if (targetWords.length === 0) return false;
+  return queryTokens.every((token) => {
+    if (target.includes(token)) return true;
+    if (token.length <= 3) return false; // exact match only for short tokens
+    return targetWords.some((word) => levenshteinDistance(token, word) <= 1);
+  });
+}
+
+function centroid(paradas: Parada[]): GeoPoint {
+  const lat = paradas.reduce((s, p) => s + p.lat, 0) / paradas.length;
+  const lon = paradas.reduce((s, p) => s + p.lng, 0) / paradas.length;
+  return { lat, lon };
+}
+
 /**
  * Strategy 1: Search paradas whose street names match both calle1 and calle2.
  * Uses token-based matching so "bv artigas" matches "bv gral artigas".
+ * Falls back to fuzzy (edit-distance) matching when exact match finds nothing.
  * Returns the centroid of matched stops.
  */
 export function geocodeFromParadas(
@@ -52,20 +95,25 @@ export function geocodeFromParadas(
 
   // If calle2 is empty, search by calle1 alone
   if (!calle2.trim()) {
-    const matches = paradas.filter((p) => {
+    const exactMatches = paradas.filter((p) => {
       const calle = normalizeText(p.calle);
       const esquina = normalizeText(p.esquina);
       return allTokensMatch(norm1, calle) || allTokensMatch(norm1, esquina);
     });
-    if (matches.length === 0) return null;
-    const lat = matches.reduce((s, p) => s + p.lat, 0) / matches.length;
-    const lon = matches.reduce((s, p) => s + p.lng, 0) / matches.length;
-    return { lat, lon };
+    if (exactMatches.length > 0) return centroid(exactMatches);
+
+    // Fuzzy fallback: tolerates encoding artifacts and typos
+    const fuzzyMatches = paradas.filter((p) => {
+      const calle = normalizeText(p.calle);
+      const esquina = normalizeText(p.esquina);
+      return allTokensFuzzyMatch(norm1, calle) || allTokensFuzzyMatch(norm1, esquina);
+    });
+    return fuzzyMatches.length > 0 ? centroid(fuzzyMatches) : null;
   }
 
   const norm2 = normalizeText(calle2);
 
-  const matches = paradas.filter((p) => {
+  const exactMatches = paradas.filter((p) => {
     const calle = normalizeText(p.calle);
     const esquina = normalizeText(p.esquina);
     return (
@@ -73,12 +121,18 @@ export function geocodeFromParadas(
       (allTokensMatch(norm2, calle) && allTokensMatch(norm1, esquina))
     );
   });
+  if (exactMatches.length > 0) return centroid(exactMatches);
 
-  if (matches.length === 0) return null;
-
-  const lat = matches.reduce((sum, p) => sum + p.lat, 0) / matches.length;
-  const lon = matches.reduce((sum, p) => sum + p.lng, 0) / matches.length;
-  return { lat, lon };
+  // Fuzzy fallback for intersection search
+  const fuzzyMatches = paradas.filter((p) => {
+    const calle = normalizeText(p.calle);
+    const esquina = normalizeText(p.esquina);
+    return (
+      (allTokensFuzzyMatch(norm1, calle) && allTokensFuzzyMatch(norm2, esquina)) ||
+      (allTokensFuzzyMatch(norm2, calle) && allTokensFuzzyMatch(norm1, esquina))
+    );
+  });
+  return fuzzyMatches.length > 0 ? centroid(fuzzyMatches) : null;
 }
 
 /**

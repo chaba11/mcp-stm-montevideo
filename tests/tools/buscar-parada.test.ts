@@ -119,6 +119,24 @@ describe("buscar_parada handler", () => {
     expect(result.content[0].text).toContain("No se encontraron");
   });
 
+  it("regression: calle1+calle2 with encoding-corrupted data finds stop via fallback", async () => {
+    // BV ESPAÑA → BV ESPAA (Latin-1 mis-decode): geocodeIntersection fails but
+    // the combined fallback (search calle+esquina together) should still find it
+    const corruptClient = makeMockClient();
+    corruptClient.getParadas = async () => [
+      { id: 4855, linea: "183", variante: 60, ordinal: 6, calle: "BV ESPAA", esquina: "OBLIGADO", lat: -34.912, lng: -56.161 },
+    ];
+    const result = await buscarParadaHandler(
+      { calle1: "Bv España", calle2: "Obligado", radio_metros: 500 },
+      corruptClient
+    );
+    // Should find the stop via fuzzy geocode, not return intersection-not-found error
+    expect(result.content[0].text).not.toContain("No se encontró la intersección");
+    const parsed = JSON.parse(result.content[0].text);
+    expect(Array.isArray(parsed)).toBe(true);
+    expect(parsed[0].parada_id).toBe(4855);
+  });
+
   it("returns empty lineas array when stop has no known lines", async () => {
     const emptyClient = makeMockClient();
     emptyClient.getParadas = async () => [

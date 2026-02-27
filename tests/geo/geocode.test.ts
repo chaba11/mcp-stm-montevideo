@@ -3,9 +3,16 @@ import {
   geocodeFromParadas,
   geocodeFromNominatim,
   geocodeIntersection,
+  levenshteinDistance,
+  allTokensFuzzyMatch,
   type NominatimResult,
 } from "../../src/geo/geocode.js";
 import { PARADAS_GEO } from "../fixtures/paradas-geo.js";
+import type { Parada } from "../../src/types/parada.js";
+
+function makeParada(id: number, calle: string, esquina: string, linea = "121"): Parada {
+  return { id, linea, variante: 60, ordinal: 1, calle, esquina, lat: -34.9, lng: -56.1 };
+}
 
 function makeFetch(results: NominatimResult, ok = true, status = 200) {
   return async (_url: string, _opts?: RequestInit) =>
@@ -155,5 +162,97 @@ describe("geocodeIntersection", () => {
     const result = await geocodeIntersection("", "LIBERTAD", PARADAS_GEO, fetchFn as typeof fetch);
     expect(result).toBeNull();
     expect(fetchCalled).toBe(false);
+  });
+});
+
+describe("levenshteinDistance", () => {
+  it("identical strings = 0", () => {
+    expect(levenshteinDistance("espana", "espana")).toBe(0);
+  });
+
+  it("one deletion: 'espana' vs 'espaa' = 1", () => {
+    // Simulates encoding corruption: Ñ → ÃA, normalized to A (loses the N)
+    expect(levenshteinDistance("espana", "espaa")).toBe(1);
+  });
+
+  it("one substitution: 'obligado' vs 'obligato' = 1", () => {
+    expect(levenshteinDistance("obligado", "obligato")).toBe(1);
+  });
+
+  it("empty string vs anything = length of other", () => {
+    expect(levenshteinDistance("", "abc")).toBe(3);
+    expect(levenshteinDistance("abc", "")).toBe(3);
+  });
+
+  it("both empty = 0", () => {
+    expect(levenshteinDistance("", "")).toBe(0);
+  });
+});
+
+describe("allTokensFuzzyMatch", () => {
+  it("exact token match works normally", () => {
+    expect(allTokensFuzzyMatch("bv espana", "bv espana")).toBe(true);
+  });
+
+  it("matches corrupted encoding: 'espana' vs 'espaa' (edit distance 1)", () => {
+    // Regression: BV ESPAÑA stored as BV ESPAÃA normalizes to BV ESPAA
+    expect(allTokensFuzzyMatch("bv espana", "bv espaa")).toBe(true);
+  });
+
+  it("short tokens (≤ 3 chars) require exact match", () => {
+    expect(allTokensFuzzyMatch("bv", "bv espana")).toBe(true);
+    expect(allTokensFuzzyMatch("bx", "bv espana")).toBe(false);
+  });
+
+  it("all tokens must match (not just one)", () => {
+    // "obligado" doesn't match "bv espaa" — requires both streets
+    expect(allTokensFuzzyMatch("espana obligado", "bv espaa")).toBe(false);
+  });
+
+  it("empty query returns false", () => {
+    expect(allTokensFuzzyMatch("", "bv espana")).toBe(false);
+  });
+
+  it("empty target returns false", () => {
+    expect(allTokensFuzzyMatch("espana", "")).toBe(false);
+  });
+});
+
+describe("geocodeFromParadas — fuzzy fallback", () => {
+  const CORRUPTED: Parada[] = [
+    // Simulates BV ESPAÑA stored as BV ESPAÃA → normalizes to "bv espaa"
+    makeParada(1, "BV ESPAA", "OBLIGADO"),   // corruption of BV ESPAÑA
+    makeParada(2, "BV ESPAA", "LIBERTAD"),
+    makeParada(3, "AV ITALIA", "GARIBALDI"),
+  ];
+
+  it("exact match misses corrupted names", () => {
+    // Without fuzzy, "bv espana" would not match "bv espaa"
+    // This test documents the problem that fuzzy fallback solves
+    const corrupted = [makeParada(1, "BV ESPAA", "OBLIGADO")];
+    // With fuzzy enabled, it should still find the stop
+    const result = geocodeFromParadas("BV ESPAÑA", "OBLIGADO", corrupted);
+    expect(result).not.toBeNull();
+  });
+
+  it("regression: 'Bv España y Obligado' finds corrupted stop via fuzzy", () => {
+    const result = geocodeFromParadas("Bv España", "Obligado", CORRUPTED);
+    expect(result).not.toBeNull();
+  });
+
+  it("single street fuzzy: 'España' finds corrupted 'ESPAA' stops", () => {
+    const result = geocodeFromParadas("España", "", CORRUPTED);
+    expect(result).not.toBeNull();
+  });
+
+  it("exact matches are preferred over fuzzy (no regression)", () => {
+    const mixed: Parada[] = [
+      makeParada(1, "BV ESPAÑA", "LIBERTAD"),   // correct
+      makeParada(2, "BV ESPAA", "OBLIGADO"),    // corrupted
+    ];
+    const result = geocodeFromParadas("BV ESPAÑA", "LIBERTAD", mixed);
+    expect(result).not.toBeNull();
+    // Should find the exact match stop (id=1)
+    expect(result!.lat).toBeCloseTo(-34.9, 3);
   });
 });

@@ -98,12 +98,25 @@ export async function buscarParadaHandler(
     if (calle2) {
       const point = await geocodeIntersection(calle1, calle2, paradas);
       if (!point) {
-        return textResponse(
-          `No se encontró la intersección de "${calle1}" con "${calle2}" en Montevideo.`
-        );
+        // Fallback: search paradas where both streets appear (in either role)
+        const norm1 = calle1.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x00-\x7f]/g, "").trim();
+        const norm2 = calle2.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x00-\x7f]/g, "").trim();
+        const bothMatches = paradas.filter((p) => {
+          const c = (p.calle + " " + p.esquina).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x00-\x7f]/g, "");
+          return c.includes(norm1) && c.includes(norm2);
+        });
+        if (bothMatches.length === 0) {
+          return textResponse(
+            `No se encontró la intersección de "${calle1}" con "${calle2}" en Montevideo.`
+          );
+        }
+        centerLat = bothMatches.reduce((s, p) => s + p.lat, 0) / bothMatches.length;
+        centerLon = bothMatches.reduce((s, p) => s + p.lng, 0) / bothMatches.length;
+        candidateIds = new Set(bothMatches.map((p) => p.id));
+      } else {
+        centerLat = point.lat;
+        centerLon = point.lon;
       }
-      centerLat = point.lat;
-      centerLon = point.lon;
     } else {
       const matches = fuzzySearchParadas(calle1, paradas);
       if (matches.length === 0) {
