@@ -21,6 +21,7 @@ export function normalizeText(text: string): string {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "") // strip combining diacritics
+    .replace(/[^\x00-\x7f]/g, "") // strip remaining non-ASCII (e.g. encoding artifacts)
     .replace(/\s+/g, " ")
     .trim();
 

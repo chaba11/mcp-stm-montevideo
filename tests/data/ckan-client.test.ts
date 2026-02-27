@@ -247,7 +247,7 @@ describe("CkanClient", () => {
       expect(p.lng).toBeLessThan(-55);
     });
 
-    it("decodes Latin-1 street names correctly (CORUÑA)", async () => {
+    it("decodes UTF-8 street names correctly (CORUÑA)", async () => {
       const paradasZip = readFileSync(join(fixturesDir, "paradas-sample.zip"));
       const fetchFn = composeFetch(
         mockAnyPackageResponse(FAKE_PARADAS_RESOURCE),
