@@ -8,6 +8,7 @@ import { registerProximosBuses } from "./tools/proximos-buses.js";
 import { registerRecorridoLinea } from "./tools/recorrido-linea.js";
 import { registerUbicacionBus } from "./tools/ubicacion-bus.js";
 import { GpsClient } from "./data/gps-client.js";
+import { StopMapper } from "./data/stop-mapper.js";
 import { registerComoLlegar } from "./tools/como-llegar.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -23,15 +24,18 @@ export function createServer(client?: CkanClient): McpServer {
   });
 
   const ckanClient = client ?? new CkanClient();
+  const gps = new GpsClient({
+    clientId: process.env.STM_CLIENT_ID,
+    clientSecret: process.env.STM_CLIENT_SECRET,
+  });
+
+  const stopMapper = new StopMapper(gps);
 
   // Register MCP tools
   registerBuscarParada(server, ckanClient);
-  registerProximosBuses(server, ckanClient);
+  registerProximosBuses(server, ckanClient, gps, stopMapper);
   registerRecorridoLinea(server, ckanClient);
-  registerUbicacionBus(server, new GpsClient({
-    clientId: process.env.STM_CLIENT_ID,
-    clientSecret: process.env.STM_CLIENT_SECRET,
-  }));
+  registerUbicacionBus(server, gps);
   registerComoLlegar(server, ckanClient);
 
   return server;

@@ -2,9 +2,11 @@
  * Error resilience tests — verify tools handle failures gracefully.
  * Uses mock fetch functions to simulate network errors and bad data.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { Cache } from "../../src/data/cache.js";
 import { CkanClient } from "../../src/data/ckan-client.js";
+import { GpsClient } from "../../src/data/gps-client.js";
+import { StopMapper } from "../../src/data/stop-mapper.js";
 import { buscarParadaHandler } from "../../src/tools/buscar-parada.js";
 import { proximosBusesHandler } from "../../src/tools/proximos-buses.js";
 import { recorridoLineaHandler } from "../../src/tools/recorrido-linea.js";
@@ -100,6 +102,7 @@ describe("Error resilience — partial data load", () => {
       await proximosBusesHandler(
         { parada_id: 300 },
         client,
+        null,
         montevideoTime(10, 0, "wednesday")
       );
     } catch {
@@ -126,6 +129,7 @@ describe("Error resilience — empty data edge cases", () => {
     const result = await proximosBusesHandler(
       { parada_id: 300 },
       client,
+      null,
       montevideoTime(10, 0, "wednesday")
     );
     expect(result.content[0].type).toBe("text");
@@ -137,6 +141,30 @@ describe("Error resilience — empty data edge cases", () => {
     const result = await recorridoLineaHandler({ linea: "181" }, client);
     expect(result.content[0].type).toBe("text");
     expect(result.content[0].text.length).toBeGreaterThan(0);
+  });
+});
+
+describe("Error resilience — GPS busstops endpoint failure", () => {
+  it("GPS busstops endpoint fails → proximos_buses returns horario planificado", async () => {
+    const client = createMockClient();
+    const gps = new GpsClient({ clientId: "test", clientSecret: "test" });
+    gps.fetchUpcomingBuses = vi.fn().mockResolvedValue({ available: true, buses: [] });
+    gps.fetchBusstops = vi.fn().mockRejectedValue(new Error("GPS busstops 503"));
+    const mapper = new StopMapper(gps, { cache: new Cache() });
+
+    const result = await proximosBusesHandler(
+      { parada_id: 300, linea: "181", cantidad: 3 },
+      client,
+      gps,
+      montevideoTime(10, 0, "monday"),
+      mapper
+    );
+
+    const parsed = JSON.parse(result.content[0].text) as Array<{ fuente: string }>;
+    expect(parsed.length).toBeGreaterThan(0);
+    for (const b of parsed) {
+      expect(b.fuente).toBe("horario_planificado");
+    }
   });
 });
 

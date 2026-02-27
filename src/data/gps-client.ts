@@ -32,6 +32,26 @@ export interface GpsClientOptions {
   fetchFn?: GpsFetchFn;
 }
 
+export interface UpcomingBus {
+  linea: string;
+  destino: string;
+  eta_segundos: number;
+  distancia_metros: number;
+}
+
+export interface UpcomingBusesResult {
+  available: boolean;
+  message?: string;
+  buses?: UpcomingBus[];
+}
+
+export interface GpsBusstop {
+  busstopId: number;
+  street1: string;
+  street2: string;
+  location: { type: string; coordinates: [number, number] }; // [lng, lat]
+}
+
 interface VehicleItem {
   id: number;
   timestamp: string;
@@ -40,6 +60,13 @@ interface VehicleItem {
   subline?: string;
   line?: string;
   vehicleIdentificationNumber?: string;
+}
+
+interface UpcomingBusApiItem {
+  line?: string;
+  destination?: string;
+  eta?: number; // seconds
+  distance?: number; // meters
 }
 
 interface TokenResponse {
@@ -132,6 +159,66 @@ export class GpsClient {
       return {
         available: false,
         message: `Error al consultar GPS en tiempo real: ${message}`,
+      };
+    }
+  }
+
+  async fetchBusstops(): Promise<GpsBusstop[]> {
+    const token = await this.fetchToken();
+    const url = `${API_BASE}/buses/busstops`;
+    const response = await this.fetchFn(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      throw new Error(`API request failed: HTTP ${response.status}`);
+    }
+    return (await response.json()) as GpsBusstop[];
+  }
+
+  async fetchUpcomingBuses(
+    paradaId: number,
+    lines: string[],
+    amountPerLine?: number
+  ): Promise<UpcomingBusesResult> {
+    if (!this.clientId || !this.clientSecret) {
+      return {
+        available: false,
+        message:
+          "ETA en tiempo real no disponible. " +
+          "Configura STM_CLIENT_ID y STM_CLIENT_SECRET para acceder a ETAs en tiempo real.",
+      };
+    }
+
+    try {
+      const token = await this.fetchToken();
+      const amount = amountPerLine ?? 3;
+      const url =
+        `${API_BASE}/buses/busstops/${paradaId}/upcomingbuses` +
+        `?lines=${encodeURIComponent(lines.join(","))}&amountperline=${amount}`;
+
+      const response = await this.fetchFn(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        throw new Error(`API request failed: HTTP ${response.status}`);
+      }
+
+      const data = (await response.json()) as UpcomingBusApiItem[];
+
+      const buses: UpcomingBus[] = data.map((item) => ({
+        linea: item.line ?? "",
+        destino: item.destination ?? "",
+        eta_segundos: item.eta ?? 0,
+        distancia_metros: item.distance ?? 0,
+      }));
+
+      return { available: true, buses };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        available: false,
+        message: `Error al consultar ETA en tiempo real: ${message}`,
       };
     }
   }

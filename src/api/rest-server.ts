@@ -7,6 +7,7 @@ import { cors } from "hono/cors";
 import { swaggerUI } from "@hono/swagger-ui";
 import { CkanClient } from "../data/ckan-client.js";
 import { GpsClient } from "../data/gps-client.js";
+import { StopMapper } from "../data/stop-mapper.js";
 import { buscarParadaHandler } from "../tools/buscar-parada.js";
 import { proximosBusesHandler } from "../tools/proximos-buses.js";
 import { recorridoLineaHandler } from "../tools/recorrido-linea.js";
@@ -78,6 +79,7 @@ export function createRestApp(
     clientId: process.env.STM_CLIENT_ID,
     clientSecret: process.env.STM_CLIENT_SECRET,
   });
+  const stopMapper = new StopMapper(gps);
 
   const app = new Hono();
 
@@ -190,7 +192,10 @@ export function createRestApp(
 
       const result = await proximosBusesHandler(
         { parada_id, calle1, calle2, linea, cantidad },
-        client
+        client,
+        gps,
+        undefined,
+        stopMapper
       );
       return c.json(parseToolResponse(result));
     } catch (err) {

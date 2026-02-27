@@ -37,7 +37,7 @@ describe("Scenario 1: ¿Cuándo pasa el 181 por BV España y Libertad?", () => {
 
   it("proximos_buses for parada 300 on weekday returns buses for line 181", async () => {
     const now = montevideoTime(9, 0, "wednesday");
-    const result = await proximosBusesHandler({ parada_id: 300, cantidad: 3 }, client, now);
+    const result = await proximosBusesHandler({ parada_id: 300, cantidad: 3 }, client, null, now);
     expect(result.content[0].type).toBe("text");
     const text = result.content[0].text;
     expect(text.length).toBeGreaterThan(10);
@@ -52,10 +52,11 @@ describe("Scenario 1: ¿Cuándo pasa el 181 por BV España y Libertad?", () => {
 
   it("proximos_buses filtered by linea 181 returns subset of unfiltered", async () => {
     const now = montevideoTime(10, 0, "wednesday");
-    const unfiltered = await proximosBusesHandler({ parada_id: 300, cantidad: 10 }, client, now);
+    const unfiltered = await proximosBusesHandler({ parada_id: 300, cantidad: 10 }, client, null, now);
     const filtered = await proximosBusesHandler(
       { parada_id: 300, linea: "181", cantidad: 10 },
       client,
+      null,
       now
     );
     const unfilteredText = unfiltered.content[0].text;
@@ -155,7 +156,7 @@ describe("Scenario 4: All 5 tools callable in sequence", () => {
     expect(r1.content[0].type).toBe("text");
 
     const now = montevideoTime(10, 0, "wednesday");
-    const r2 = await proximosBusesHandler({ parada_id: 300 }, client, now);
+    const r2 = await proximosBusesHandler({ parada_id: 300 }, client, null, now);
     expect(r2.content[0].type).toBe("text");
 
     const r3 = await recorridoLineaHandler({ linea: "181" }, client);

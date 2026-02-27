@@ -84,6 +84,7 @@ function buildSpec() {
                         horario_estimado: { type: "string", description: "Formato HH:MM" },
                         minutos_restantes: { type: "integer" },
                         parada_nombre: { type: "string" },
+                        fuente: { type: "string", enum: ["tiempo_real", "horario_planificado"], description: "Origen de los datos: tiempo real (API GPS) o horario planificado (CKAN)" },
                       },
                     },
                   },

@@ -2,6 +2,9 @@ import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { CkanClient } from "../../src/data/ckan-client.js";
 import { Cache } from "../../src/data/cache.js";
 import { proximosBusesHandler } from "../../src/tools/proximos-buses.js";
+import { GpsClient } from "../../src/data/gps-client.js";
+import type { UpcomingBusesResult } from "../../src/data/gps-client.js";
+import { StopMapper } from "../../src/data/stop-mapper.js";
 import { PARADAS_GEO } from "../fixtures/paradas-geo.js";
 import { LINEAS_FIXTURE } from "../fixtures/schedule-data.js";
 import { createMockClient, montevideoTime } from "./__helpers__/tool-test-utils.js";
@@ -112,6 +115,7 @@ describe("proximos_buses handler", () => {
     const result = await proximosBusesHandler(
       { parada_id: TEST_PARADA_ID, cantidad: 5 },
       client,
+      null,
       WEDNESDAY_10_30
     );
     expect(result.content[0].type).toBe("text");
@@ -129,6 +133,7 @@ describe("proximos_buses handler", () => {
     const result = await proximosBusesHandler(
       { parada_id: TEST_PARADA_ID },
       client,
+      null,
       WEDNESDAY_10_30
     );
     const parsed = JSON.parse(result.content[0].text) as Array<{
@@ -138,6 +143,7 @@ describe("proximos_buses handler", () => {
       horario_estimado: string;
       minutos_restantes: number;
       parada_nombre: string;
+      fuente: string;
     }>;
     for (const b of parsed) {
       expect(typeof b.linea).toBe("string");
@@ -148,6 +154,7 @@ describe("proximos_buses handler", () => {
       expect(typeof b.minutos_restantes).toBe("number");
       expect(b.minutos_restantes).toBeGreaterThanOrEqual(0);
       expect(typeof b.parada_nombre).toBe("string");
+      expect(b.fuente).toBe("horario_planificado");
     }
   });
 
@@ -155,6 +162,7 @@ describe("proximos_buses handler", () => {
     const result = await proximosBusesHandler(
       { parada_id: TEST_PARADA_ID, linea: "181", cantidad: 10 },
       client,
+      null,
       WEDNESDAY_10_30
     );
     const parsed = JSON.parse(result.content[0].text) as Array<{ linea: string }>;
@@ -168,18 +176,20 @@ describe("proximos_buses handler", () => {
     const upper = await proximosBusesHandler(
       { parada_id: TEST_PARADA_ID, linea: "181" },
       client,
+      null,
       WEDNESDAY_10_30
     );
     const lower = await proximosBusesHandler(
       { parada_id: TEST_PARADA_ID, linea: "181" },
       client,
+      null,
       WEDNESDAY_10_30
     );
     expect(upper.content[0].text).toBe(lower.content[0].text);
   });
 
   it("returns message when no args provided", async () => {
-    const result = await proximosBusesHandler({}, client, WEDNESDAY_10_30);
+    const result = await proximosBusesHandler({}, client, null, WEDNESDAY_10_30);
     expect(result.content[0].text).toContain("Proporciona");
   });
 
@@ -187,6 +197,7 @@ describe("proximos_buses handler", () => {
     const result = await proximosBusesHandler(
       { parada_id: TEST_PARADA_ID },
       client,
+      null,
       WEDNESDAY_23_50
     );
     expect(result.content[0].text).toContain("No hay más buses hoy");
@@ -206,6 +217,7 @@ describe("proximos_buses handler", () => {
     const result = await proximosBusesHandler(
       { parada_id: 9999 },
       client,
+      null,
       WEDNESDAY_10_30
     );
     expect(result.content[0].text).toContain("No se encontraron horarios");
@@ -216,6 +228,7 @@ describe("proximos_buses handler", () => {
     const result = await proximosBusesHandler(
       { calle1: "BV ESPAÑA", cantidad: 3 },
       client,
+      null,
       WEDNESDAY_10_30
     );
     // Either returns buses or "no horarios" — depends if matched stop has horarios
@@ -227,6 +240,7 @@ describe("proximos_buses handler", () => {
     const result = await proximosBusesHandler(
       { calle1: "CALLE_COMPLETAMENTE_INVENTADA_ZZZZZ" },
       client,
+      null,
       WEDNESDAY_10_30
     );
     expect(result.content[0].text).toContain("No se encontró ninguna parada");
@@ -236,6 +250,7 @@ describe("proximos_buses handler", () => {
     const result = await proximosBusesHandler(
       { parada_id: TEST_PARADA_ID, cantidad: 2 },
       client,
+      null,
       WEDNESDAY_10_30
     );
     const parsed = JSON.parse(result.content[0].text);
@@ -246,6 +261,7 @@ describe("proximos_buses handler", () => {
     const result = await proximosBusesHandler(
       { parada_id: TEST_PARADA_ID, cantidad: 10 },
       client,
+      null,
       WEDNESDAY_10_30
     );
     const parsed = JSON.parse(result.content[0].text) as Array<{ horario_estimado: string }>;
@@ -259,6 +275,7 @@ describe("proximos_buses handler", () => {
     const result = await proximosBusesHandler(
       { parada_id: TEST_PARADA_ID, linea: "181", cantidad: 1 },
       client,
+      null,
       WEDNESDAY_10_30
     );
     const parsed = JSON.parse(result.content[0].text) as Array<{
@@ -273,6 +290,7 @@ describe("proximos_buses handler", () => {
     const result = await proximosBusesHandler(
       { parada_id: TEST_PARADA_ID, cantidad: 5 },
       client,
+      null,
       SATURDAY_10_00
     );
     const parsed = JSON.parse(result.content[0].text) as Array<{
@@ -290,6 +308,7 @@ describe("proximos_buses handler", () => {
     const result = await proximosBusesHandler(
       { parada_id: TEST_PARADA_ID, cantidad: 5 },
       client,
+      null,
       SUNDAY_10_00
     );
     const parsed = JSON.parse(result.content[0].text) as Array<{
@@ -307,6 +326,7 @@ describe("proximos_buses — extended edge cases with realistic schedule", () =>
     const result = await proximosBusesHandler(
       { parada_id: 300, linea: "181", cantidad: 3 },
       client,
+      null,
       now
     );
     const parsed = JSON.parse(result.content[0].text) as Array<{
@@ -322,7 +342,7 @@ describe("proximos_buses — extended edge cases with realistic schedule", () =>
   it("Monday 23:50 — no more buses today, shows tomorrow", async () => {
     const client = createMockClient();
     const now = montevideoTime(23, 50, "monday");
-    const result = await proximosBusesHandler({ parada_id: 300 }, client, now);
+    const result = await proximosBusesHandler({ parada_id: 300 }, client, null, now);
     expect(result.content[0].text).toContain("No hay más buses hoy");
     const jsonPart = result.content[0].text.split("\n").slice(1).join("\n");
     const parsed = JSON.parse(jsonPart);
@@ -339,6 +359,7 @@ describe("proximos_buses — extended edge cases with realistic schedule", () =>
     const result = await proximosBusesHandler(
       { parada_id: 300, linea: "181", cantidad: 3 },
       client,
+      null,
       now
     );
     const parsed = JSON.parse(result.content[0].text) as Array<{
@@ -357,6 +378,7 @@ describe("proximos_buses — extended edge cases with realistic schedule", () =>
     const result = await proximosBusesHandler(
       { parada_id: 300, linea: "181", cantidad: 3 },
       client,
+      null,
       now
     );
     const parsed = JSON.parse(result.content[0].text) as Array<{
@@ -374,6 +396,7 @@ describe("proximos_buses — extended edge cases with realistic schedule", () =>
     const result = await proximosBusesHandler(
       { parada_id: 300, linea: "999" },
       client,
+      null,
       now
     );
     expect(result.content[0].text).toContain("No se encontraron horarios");
@@ -386,6 +409,7 @@ describe("proximos_buses — extended edge cases with realistic schedule", () =>
     const result = await proximosBusesHandler(
       { parada_id: 300, linea: "181", cantidad: 1 },
       client,
+      null,
       now
     );
     const parsed = JSON.parse(result.content[0].text);
@@ -399,11 +423,13 @@ describe("proximos_buses — extended edge cases with realistic schedule", () =>
     const byId = await proximosBusesHandler(
       { parada_id: 300, linea: "181" },
       client,
+      null,
       now
     );
     const byBoth = await proximosBusesHandler(
       { parada_id: 300, calle1: "AV AGRACIADA", linea: "181" },
       client,
+      null,
       now
     );
     // Both should use parada 300 and return 181 buses
@@ -417,6 +443,7 @@ describe("proximos_buses — extended edge cases with realistic schedule", () =>
     const result = await proximosBusesHandler(
       { calle1: "BV ESPAÑA", calle2: "LIBERTAD", cantidad: 3 },
       client,
+      null,
       now
     );
     expect(result.content[0].type).toBe("text");
@@ -427,7 +454,7 @@ describe("proximos_buses — extended edge cases with realistic schedule", () =>
   it("empty horarios returns graceful message", async () => {
     const client = createMockClient({ horarios: [] });
     const now = montevideoTime(10, 0);
-    const result = await proximosBusesHandler({ parada_id: 300 }, client, now);
+    const result = await proximosBusesHandler({ parada_id: 300 }, client, null, now);
     expect(result.content[0].text).toContain("No se encontraron horarios");
   });
 
@@ -442,12 +469,271 @@ describe("proximos_buses — extended edge cases with realistic schedule", () =>
       lineas: LINEAS_FIXTURE,
     });
     const now = montevideoTime(9, 0, "wednesday");
-    const result = await proximosBusesHandler({ parada_id: 300, cantidad: 10 }, client, now);
+    const result = await proximosBusesHandler({ parada_id: 300, cantidad: 10 }, client, null, now);
     const parsed = JSON.parse(result.content[0].text);
     // Should contain 3 results sorted by hora
     expect(parsed.length).toBe(3);
     expect(parsed[0].horario_estimado).toBe("10:00");
     expect(parsed[1].horario_estimado).toBe("10:00");
     expect(parsed[2].horario_estimado).toBe("10:15");
+  });
+});
+
+describe("proximos_buses — real-time ETA", () => {
+  function makeMockGps(result: UpcomingBusesResult): GpsClient {
+    const gps = new GpsClient({ clientId: "test", clientSecret: "test" });
+    gps.fetchUpcomingBuses = vi.fn().mockResolvedValue(result);
+    return gps;
+  }
+
+  function makeMockGpsThrows(): GpsClient {
+    const gps = new GpsClient({ clientId: "test", clientSecret: "test" });
+    gps.fetchUpcomingBuses = vi.fn().mockRejectedValue(new Error("API timeout"));
+    return gps;
+  }
+
+  it("uses real-time ETA when GPS client returns data", async () => {
+    const client = createMockClient();
+    const now = montevideoTime(10, 0, "monday");
+    const gps = makeMockGps({
+      available: true,
+      buses: [
+        { linea: "181", destino: "TRES CRUCES", eta_segundos: 300, distancia_metros: 1200 },
+        { linea: "181", destino: "TRES CRUCES", eta_segundos: 900, distancia_metros: 3500 },
+      ],
+    });
+
+    const result = await proximosBusesHandler(
+      { parada_id: 300, linea: "181", cantidad: 3 },
+      client,
+      gps,
+      now
+    );
+    const parsed = JSON.parse(result.content[0].text) as Array<{
+      linea: string;
+      destino: string;
+      minutos_restantes: number;
+      fuente: string;
+    }>;
+    expect(parsed.length).toBe(2);
+    expect(parsed[0].fuente).toBe("tiempo_real");
+    expect(parsed[0].linea).toBe("181");
+    expect(parsed[0].minutos_restantes).toBe(5); // 300s / 60
+    expect(parsed[1].minutos_restantes).toBe(15); // 900s / 60
+  });
+
+  it("falls back to static when GPS returns available: false", async () => {
+    const client = createMockClient();
+    const now = montevideoTime(10, 0, "monday");
+    const gps = makeMockGps({ available: false, message: "No credentials" });
+
+    const result = await proximosBusesHandler(
+      { parada_id: 300, linea: "181", cantidad: 3 },
+      client,
+      gps,
+      now
+    );
+    const parsed = JSON.parse(result.content[0].text) as Array<{ fuente: string }>;
+    expect(parsed.length).toBeGreaterThan(0);
+    for (const b of parsed) {
+      expect(b.fuente).toBe("horario_planificado");
+    }
+  });
+
+  it("falls back to static when GPS returns empty buses array", async () => {
+    const client = createMockClient();
+    const now = montevideoTime(10, 0, "monday");
+    const gps = makeMockGps({ available: true, buses: [] });
+
+    const result = await proximosBusesHandler(
+      { parada_id: 300, linea: "181", cantidad: 3 },
+      client,
+      gps,
+      now
+    );
+    const parsed = JSON.parse(result.content[0].text) as Array<{ fuente: string }>;
+    expect(parsed.length).toBeGreaterThan(0);
+    for (const b of parsed) {
+      expect(b.fuente).toBe("horario_planificado");
+    }
+  });
+
+  it("falls back to static when GPS throws an error", async () => {
+    const client = createMockClient();
+    const now = montevideoTime(10, 0, "monday");
+    const gps = makeMockGpsThrows();
+
+    const result = await proximosBusesHandler(
+      { parada_id: 300, linea: "181", cantidad: 3 },
+      client,
+      gps,
+      now
+    );
+    const parsed = JSON.parse(result.content[0].text) as Array<{ fuente: string }>;
+    expect(parsed.length).toBeGreaterThan(0);
+    for (const b of parsed) {
+      expect(b.fuente).toBe("horario_planificado");
+    }
+  });
+
+  it("uses static path when gps is null", async () => {
+    const client = createMockClient();
+    const now = montevideoTime(10, 0, "monday");
+
+    const result = await proximosBusesHandler(
+      { parada_id: 300, linea: "181", cantidad: 3 },
+      client,
+      null,
+      now
+    );
+    const parsed = JSON.parse(result.content[0].text) as Array<{ fuente: string }>;
+    expect(parsed.length).toBeGreaterThan(0);
+    for (const b of parsed) {
+      expect(b.fuente).toBe("horario_planificado");
+    }
+  });
+
+  it("real-time ETA calculates horario_estimado correctly", async () => {
+    const client = createMockClient();
+    // 10:00 AM Montevideo = 13:00 UTC
+    const now = new Date("2026-02-25T13:00:00Z");
+    const gps = makeMockGps({
+      available: true,
+      buses: [
+        { linea: "181", destino: "CENTRO", eta_segundos: 600, distancia_metros: 2000 },
+      ],
+    });
+
+    const result = await proximosBusesHandler(
+      { parada_id: 300, linea: "181" },
+      client,
+      gps,
+      now
+    );
+    const parsed = JSON.parse(result.content[0].text) as Array<{
+      horario_estimado: string;
+      minutos_restantes: number;
+    }>;
+    expect(parsed[0].horario_estimado).toBe("10:10"); // 10:00 + 600s = 10:10
+    expect(parsed[0].minutos_restantes).toBe(10);
+  });
+
+  it("respects cantidad limit with real-time data", async () => {
+    const client = createMockClient();
+    const now = montevideoTime(10, 0, "monday");
+    const gps = makeMockGps({
+      available: true,
+      buses: [
+        { linea: "181", destino: "A", eta_segundos: 60, distancia_metros: 100 },
+        { linea: "181", destino: "B", eta_segundos: 120, distancia_metros: 200 },
+        { linea: "181", destino: "C", eta_segundos: 180, distancia_metros: 300 },
+      ],
+    });
+
+    const result = await proximosBusesHandler(
+      { parada_id: 300, linea: "181", cantidad: 2 },
+      client,
+      gps,
+      now
+    );
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.length).toBe(2);
+  });
+});
+
+describe("proximos_buses — StopMapper integration", () => {
+  function makeMockGpsWithMapper(
+    upcomingResult: UpcomingBusesResult
+  ): { gps: GpsClient; mapper: StopMapper } {
+    const gps = new GpsClient({ clientId: "test", clientSecret: "test" });
+    gps.fetchUpcomingBuses = vi.fn().mockResolvedValue(upcomingResult);
+    gps.fetchBusstops = vi.fn().mockResolvedValue([
+      {
+        busstopId: 8888,
+        street1: "BV ESPAÑA",
+        street2: "LIBERTAD",
+        location: { type: "Point", coordinates: [-56.1505, -34.9145] },
+      },
+    ]);
+    const mapper = new StopMapper(gps, { cache: new Cache() });
+    return { gps, mapper };
+  }
+
+  it("with mapper: fetchUpcomingBuses receives GPS busstopId, not CKAN ID", async () => {
+    const client = createMockClient();
+    const now = montevideoTime(10, 0, "monday");
+    const { gps, mapper } = makeMockGpsWithMapper({
+      available: true,
+      buses: [
+        { linea: "181", destino: "TRES CRUCES", eta_segundos: 300, distancia_metros: 1200 },
+      ],
+    });
+
+    await proximosBusesHandler(
+      { parada_id: 300, linea: "181", cantidad: 3 },
+      client,
+      gps,
+      now,
+      mapper
+    );
+
+    // The mapper should have resolved CKAN ID 300 → GPS busstopId 8888
+    expect(gps.fetchUpcomingBuses).toHaveBeenCalledWith(8888, ["181"], 3);
+  });
+
+  it("mapper returns null → fallback to scheduled horarios", async () => {
+    const client = createMockClient();
+    const now = montevideoTime(10, 0, "monday");
+    const gps = new GpsClient({ clientId: "test", clientSecret: "test" });
+    gps.fetchUpcomingBuses = vi.fn().mockResolvedValue({ available: true, buses: [] });
+    // Return a far-away busstop that won't match within tolerance
+    gps.fetchBusstops = vi.fn().mockResolvedValue([
+      {
+        busstopId: 9999,
+        street1: "LEJOS",
+        street2: "MUY LEJOS",
+        location: { type: "Point", coordinates: [-55.0, -33.0] }, // far away
+      },
+    ]);
+    const mapper = new StopMapper(gps, { cache: new Cache() });
+
+    const result = await proximosBusesHandler(
+      { parada_id: 300, linea: "181", cantidad: 3 },
+      client,
+      gps,
+      now,
+      mapper
+    );
+
+    const parsed = JSON.parse(result.content[0].text) as Array<{ fuente: string }>;
+    expect(parsed.length).toBeGreaterThan(0);
+    for (const b of parsed) {
+      expect(b.fuente).toBe("horario_planificado");
+    }
+    // fetchUpcomingBuses should NOT have been called since mapper returned null
+    expect(gps.fetchUpcomingBuses).not.toHaveBeenCalled();
+  });
+
+  it("without mapper → uses CKAN ID directly (backward compat)", async () => {
+    const client = createMockClient();
+    const now = montevideoTime(10, 0, "monday");
+    const gps = new GpsClient({ clientId: "test", clientSecret: "test" });
+    gps.fetchUpcomingBuses = vi.fn().mockResolvedValue({
+      available: true,
+      buses: [
+        { linea: "181", destino: "CENTRO", eta_segundos: 120, distancia_metros: 500 },
+      ],
+    });
+
+    await proximosBusesHandler(
+      { parada_id: 300, linea: "181", cantidad: 3 },
+      client,
+      gps,
+      now
+      // no mapper
+    );
+
+    // Without mapper, CKAN ID 300 is used directly
+    expect(gps.fetchUpcomingBuses).toHaveBeenCalledWith(300, ["181"], 3);
   });
 });

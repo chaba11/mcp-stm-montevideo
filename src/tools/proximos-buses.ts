@@ -1,6 +1,8 @@
 import * as z from "zod/v4";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CkanClient } from "../data/ckan-client.js";
+import type { GpsClient } from "../data/gps-client.js";
+import type { StopMapper } from "../data/stop-mapper.js";
 import { getNextBuses } from "../data/schedule.js";
 import { findNearestParadas } from "../geo/distance.js";
 import { geocodeIntersection } from "../geo/geocode.js";
@@ -22,6 +24,7 @@ export interface ProximoBusResult {
   horario_estimado: string;
   minutos_restantes: number;
   parada_nombre: string;
+  fuente: "tiempo_real" | "horario_planificado";
 }
 
 export interface ToolResponse {
@@ -79,9 +82,12 @@ async function resolveParadaId(
 export async function proximosBusesHandler(
   args: ProximosBusesArgs,
   client: CkanClient,
-  now?: Date
+  gps?: GpsClient | null,
+  now?: Date,
+  stopMapper?: StopMapper | null
 ): Promise<ToolResponse> {
   const { parada_id, calle1, calle2, linea, cantidad = 5 } = args;
+  const currentTime = now ?? new Date();
 
   let paradaId: number;
   let paradaNombre: string;
@@ -105,6 +111,7 @@ export async function proximosBusesHandler(
     );
   }
 
+  // Always load CKAN data (needed for fallback and to determine lines)
   let horarios, lineas;
   try {
     [horarios, lineas] = await Promise.all([
@@ -117,8 +124,75 @@ export async function proximosBusesHandler(
     );
   }
 
+  // Try real-time ETA first if GPS client is available
+  if (gps) {
+    try {
+      // Determine which lines to query
+      let queryLines: string[];
+      if (linea) {
+        queryLines = [linea];
+      } else {
+        // Extract unique lines serving this stop from CKAN horarios
+        const variantesAtStop = new Set(
+          horarios
+            .filter((h) => h.cod_ubic_parada === paradaId)
+            .map((h) => h.cod_variante)
+        );
+        const lineNames = new Set<string>();
+        for (const l of lineas) {
+          if (variantesAtStop.has(l.codVariante)) {
+            lineNames.add(l.descLinea);
+          }
+        }
+        queryLines = Array.from(lineNames);
+      }
+
+      if (queryLines.length > 0) {
+        // Resolve the GPS busstopId if a mapper is available
+        let gpsBusstopId = paradaId;
+        if (stopMapper) {
+          const paradas = await client.getParadas();
+          const parada = paradas.find((p) => p.id === paradaId);
+          if (parada) {
+            const resolved = await stopMapper.resolveGpsBusstopId(paradaId, parada.lat, parada.lng);
+            if (resolved === null) {
+              throw new Error("No matching GPS busstop found");
+            }
+            gpsBusstopId = resolved;
+          }
+        }
+
+        const rtResult = await gps.fetchUpcomingBuses(gpsBusstopId, queryLines, cantidad);
+        if (rtResult.available && rtResult.buses && rtResult.buses.length > 0) {
+          const output: ProximoBusResult[] = rtResult.buses
+            .slice(0, cantidad)
+            .map((b) => {
+              const arrival = new Date(currentTime.getTime() + b.eta_segundos * 1000);
+              // Convert arrival to Montevideo time for display
+              const mvdTime = new Date(arrival.toLocaleString("en-US", { timeZone: "America/Montevideo" }));
+              const mvdHH = String(mvdTime.getHours()).padStart(2, "0");
+              const mvdMM = String(mvdTime.getMinutes()).padStart(2, "0");
+              return {
+                linea: b.linea,
+                variante: 0,
+                destino: b.destino,
+                horario_estimado: `${mvdHH}:${mvdMM}`,
+                minutos_restantes: Math.round(b.eta_segundos / 60),
+                parada_nombre: paradaNombre,
+                fuente: "tiempo_real" as const,
+              };
+            });
+          return textResponse(JSON.stringify(output, null, 2));
+        }
+      }
+    } catch {
+      // Real-time failed — fall through to static schedule
+    }
+  }
+
+  // Static schedule fallback
   const result = getNextBuses(
-    { paradaId, linea, count: cantidad, now },
+    { paradaId, linea, count: cantidad, now: currentTime },
     horarios,
     lineas
   );
@@ -136,6 +210,7 @@ export async function proximosBusesHandler(
     horario_estimado: b.horario_estimado,
     minutos_restantes: b.minutos_restantes,
     parada_nombre: paradaNombre,
+    fuente: "horario_planificado" as const,
   }));
 
   if (result.isNextDay) {
@@ -148,16 +223,22 @@ export async function proximosBusesHandler(
   return textResponse(JSON.stringify(output, null, 2));
 }
 
-export function registerProximosBuses(server: McpServer, client: CkanClient): void {
+export function registerProximosBuses(
+  server: McpServer,
+  client: CkanClient,
+  gps?: GpsClient,
+  stopMapper?: StopMapper | null
+): void {
   server.registerTool(
     "proximos_buses",
     {
       description:
         "Consulta los próximos ómnibus que pasan por una parada del STM en Montevideo. " +
         "Proporciona parada_id (obtenido de buscar_parada) o una dirección (calle1 y opcionalmente calle2). " +
-        "Opcionalmente filtra por número de línea.",
+        "Opcionalmente filtra por número de línea. " +
+        "Si hay credenciales API disponibles, usa datos en tiempo real; sino, usa horarios planificados.",
       inputSchema: INPUT_SCHEMA,
     },
-    (args) => proximosBusesHandler(args as ProximosBusesArgs, client)
+    (args) => proximosBusesHandler(args as ProximosBusesArgs, client, gps, undefined, stopMapper)
   );
 }
