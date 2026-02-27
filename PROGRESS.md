@@ -11,7 +11,7 @@ Este archivo se actualiza al final de cada loop completado.
 - [x] LOOP-03: Geo utilities
 - [x] LOOP-03B: Tests — geo utilities (25+ tests, edge cases)
 - [x] LOOP-04: Tool buscar_parada
-- [ ] LOOP-05: Tool proximos_buses
+- [x] LOOP-05: Tool proximos_buses
 - [ ] LOOP-05B: Tests — buscar_parada & proximos_buses (30+ tests, time/timezone edge cases)
 - [ ] LOOP-06: Tool recorrido_linea
 - [ ] LOOP-07: Tool ubicacion_bus
