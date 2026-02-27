@@ -681,7 +681,7 @@ describe("proximos_buses — StopMapper integration", () => {
     expect(gps.fetchUpcomingBuses).toHaveBeenCalledWith(8888, ["181"], 3);
   });
 
-  it("mapper returns null → fallback to scheduled horarios", async () => {
+  it("mapper returns null → skips fetchUpcomingBuses but still tries position-based ETA (regression)", async () => {
     const client = createMockClient();
     const now = montevideoTime(10, 0, "monday");
     const gps = new GpsClient({ clientId: "test", clientSecret: "test" });
@@ -695,6 +695,8 @@ describe("proximos_buses — StopMapper integration", () => {
         location: { type: "Point", coordinates: [-55.0, -33.0] }, // far away
       },
     ]);
+    // No GPS positions available → should fall through to horario_planificado
+    gps.fetchBusPositions = vi.fn().mockResolvedValue({ available: true, positions: [] });
     const mapper = new StopMapper(gps, { cache: new Cache() });
 
     const result = await proximosBusesHandler(
@@ -712,6 +714,8 @@ describe("proximos_buses — StopMapper integration", () => {
     }
     // fetchUpcomingBuses should NOT have been called since mapper returned null
     expect(gps.fetchUpcomingBuses).not.toHaveBeenCalled();
+    // But fetchBusPositions SHOULD have been tried (position-based ETA fallback)
+    expect(gps.fetchBusPositions).toHaveBeenCalled();
   });
 
   it("without mapper → uses CKAN ID directly (backward compat)", async () => {
