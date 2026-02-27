@@ -112,7 +112,9 @@ export class CkanClient {
    */
   private async resolveDownloadUrl(packageId: string, resourcePattern: string): Promise<string> {
     const resources = await this.getPackageResources(packageId);
-    const resource = resources.find((r) => r.url.includes(resourcePattern));
+    const resource = resources.find(
+      (r) => r.url.includes(resourcePattern) && (r.url.endsWith(".zip") || r.url.includes("generar_zip2")),
+    );
     if (!resource) {
       throw new Error(
         `No resource matching "${resourcePattern}" found in package "${packageId}". ` +
@@ -134,7 +136,8 @@ export class CkanClient {
     }
 
     const html = await res.text();
-    const match = html.match(/action=['"]([^'"]+)['"]/);
+    // Real HTML: action = '/sit/tmp/X.zip' (spaces around =, quotes optional)
+    const match = html.match(/action\s*=\s*['"]?([^\s'"<>]+)['"]?/);
     if (!match) {
       throw new Error(
         `Could not parse download URL from generar_zip2 response at ${url}. ` +
