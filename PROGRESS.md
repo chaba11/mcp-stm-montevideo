@@ -15,7 +15,7 @@ Este archivo se actualiza al final de cada loop completado.
 - [x] LOOP-05B: Tests — buscar_parada & proximos_buses (30+ tests, time/timezone edge cases)
 - [x] LOOP-06: Tool recorrido_linea
 - [x] LOOP-07: Tool ubicacion_bus
-- [ ] LOOP-08: Tool como_llegar
+- [x] LOOP-08: Tool como_llegar
 - [ ] LOOP-08B: Tests — routing, recorrido, ubicacion (50+ cumulative tests, perf tests)
 - [ ] LOOP-09: Integration tests con datos reales
 - [ ] LOOP-09B: Tests — MCP protocol, e2e scenarios, error resilience (80+ total tests)
