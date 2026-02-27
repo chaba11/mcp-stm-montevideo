@@ -5,7 +5,7 @@
  * Line D10: 2 variants (5300=A, 5301=B), runs 6:00-22:00, every 20 min
  * Serves paradas: 300, 301, 302, 303, 304
  */
-import type { HorarioRow } from "../../src/types/horario.js";
+import type { HorarioRow, TipoDiaValue } from "../../src/types/horario.js";
 import type { LineaVariante } from "../../src/types/linea.js";
 import type { Parada } from "../../src/types/parada.js";
 
@@ -177,3 +177,24 @@ function buildHorarios(): HorarioRow[] {
 }
 
 export const HORARIOS_FIXTURE: HorarioRow[] = buildHorarios();
+
+/**
+ * Helper to build a set of HorarioRows representing a single trip.
+ * Useful for testing segment time calculations.
+ */
+export function makeTripHorarios(
+  codVariante: number,
+  frecuencia: number,
+  tipoDia: TipoDiaValue,
+  stops: Array<{ paradaId: number; ordinal: number; hora: number }>
+): HorarioRow[] {
+  return stops.map((s) => ({
+    tipo_dia: tipoDia,
+    cod_variante: codVariante,
+    frecuencia,
+    cod_ubic_parada: s.paradaId,
+    ordinal: s.ordinal,
+    hora: s.hora,
+    dia_anterior: "N" as const,
+  }));
+}

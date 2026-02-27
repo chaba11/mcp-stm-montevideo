@@ -216,7 +216,8 @@ export async function proximosBusesHandler(
               allPositions,
               routeParadas,
               lineName,
-              currentTime
+              currentTime,
+              horarios
             )
           );
 

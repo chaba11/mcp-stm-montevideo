@@ -1,10 +1,20 @@
 /**
  * Pure function to estimate ETAs from GPS bus positions along a route.
  * Used as fallback when the upcomingbuses endpoint returns empty.
+ *
+ * Primary: uses CKAN schedule segment times (when horarios provided).
+ * Fallback: distance-based with road factor + dwell time.
  */
 import { getDistance } from "geolib";
 import type { BusPosition } from "../data/gps-client.js";
+import type { HorarioRow } from "../types/horario.js";
 import type { Parada } from "../types/parada.js";
+import { getTipoDia } from "../data/schedule.js";
+import {
+  buildAllSegmentTables,
+  getSegmentTravelTime,
+  type SegmentTimeTable,
+} from "./segment-times.js";
 
 export interface GpsEstimatedBus {
   id_vehiculo: string;
@@ -20,16 +30,25 @@ const DEFAULT_SPEED_KMH = 20;
 const MIN_SPEED_KMH = 5;
 /** Ignore buses that haven't reported in over 10 minutes */
 const STALE_THRESHOLD_MS = 10 * 60 * 1000;
+/** Haversine-to-road distance multiplier for Montevideo urban streets */
+const ROAD_DISTANCE_FACTOR = 1.35;
+/** Average dwell time per intermediate stop in seconds */
+const DWELL_TIME_PER_STOP_S = 25;
 
 /**
  * Estimate ETAs for buses approaching a target stop, using GPS positions
  * and the ordered sequence of stops along each route variant.
+ *
+ * When `horarios` is provided, uses CKAN schedule-derived segment times
+ * as the primary ETA source. Falls back to distance-based calculation
+ * when schedule lookup fails or horarios is omitted.
  *
  * @param targetParadaId - The CKAN stop ID we want ETAs for
  * @param busPositions - Current GPS positions of active buses
  * @param routeParadas - All stops for the relevant line(s), with ordinal + variante
  * @param lineaName - Line name for the output
  * @param now - Current time (defaults to Date.now())
+ * @param horarios - Optional CKAN schedule data for schedule-based ETA
  * @returns Estimated arrivals sorted by ETA ascending
  */
 export function estimateEtaFromPositions(
@@ -37,7 +56,8 @@ export function estimateEtaFromPositions(
   busPositions: BusPosition[],
   routeParadas: Parada[],
   lineaName: string,
-  now?: Date
+  now?: Date,
+  horarios?: HorarioRow[]
 ): GpsEstimatedBus[] {
   if (busPositions.length === 0 || routeParadas.length === 0) {
     return [];
@@ -60,10 +80,20 @@ export function estimateEtaFromPositions(
     arr.sort((a, b) => a.ordinal - b.ordinal);
   }
 
+  // Build segment time tables from schedule data (once, outside the bus loop)
+  let segmentTables: Map<number, SegmentTimeTable> | null = null;
+  if (horarios && horarios.length > 0) {
+    const tipoDia = getTipoDia(currentTime);
+    const variantCodes = Array.from(paradasByVariante.keys());
+    segmentTables = buildAllSegmentTables(horarios, variantCodes, tipoDia);
+    if (segmentTables.size === 0) segmentTables = null;
+  }
+
   for (const bus of busPositions) {
     // Skip stale data
     const reportTime = new Date(bus.ultimo_reporte).getTime();
-    if (currentTime.getTime() - reportTime > STALE_THRESHOLD_MS) {
+    const reportAgeMs = currentTime.getTime() - reportTime;
+    if (reportAgeMs > STALE_THRESHOLD_MS) {
       continue;
     }
 
@@ -108,7 +138,7 @@ export function estimateEtaFromPositions(
         continue;
       }
 
-      // Sum distances along the route from the bus's closest stop to the target
+      // Sum haversine distances along route (used for distancia_metros and fallback)
       let totalDistance = closestDist; // distance from bus to closest stop
       for (let i = closestIdx; i < targetIdx; i++) {
         totalDistance += getDistance(
@@ -117,10 +147,49 @@ export function estimateEtaFromPositions(
         );
       }
 
-      // Calculate ETA: distance / speed
-      const speedKmh = bus.velocidad >= MIN_SPEED_KMH ? bus.velocidad : DEFAULT_SPEED_KMH;
-      const speedMs = (speedKmh * 1000) / 3600; // convert km/h to m/s
-      const etaSeconds = Math.round(totalDistance / speedMs);
+      const reportAgeSeconds = Math.max(0, Math.round(reportAgeMs / 1000));
+      let etaSeconds: number | null = null;
+
+      // PRIMARY: schedule-based ETA using segment times
+      const table = segmentTables?.get(variantId);
+      if (table) {
+        const closestOrdinal = variantParadas[closestIdx].ordinal;
+        const targetOrdinal = variantParadas[targetIdx].ordinal;
+        const segmentTime = getSegmentTravelTime(table, closestOrdinal, targetOrdinal);
+
+        if (segmentTime !== null) {
+          // Partial segment adjustment: if bus is between stops, subtract a fraction
+          // of the first segment time proportionally to how far along it is.
+          let adjustment = 0;
+          if (closestIdx + 1 < variantParadas.length) {
+            const distToNext = getDistance(
+              { latitude: variantParadas[closestIdx].lat, longitude: variantParadas[closestIdx].lng },
+              { latitude: variantParadas[closestIdx + 1].lat, longitude: variantParadas[closestIdx + 1].lng }
+            );
+            if (distToNext > 0) {
+              const fraction = closestDist / distToNext;
+              const firstSegOrd = variantParadas[closestIdx].ordinal;
+              const nextSegOrd = variantParadas[closestIdx + 1].ordinal;
+              const firstSegTime = getSegmentTravelTime(table, firstSegOrd, nextSegOrd);
+              if (firstSegTime !== null) {
+                adjustment = fraction * firstSegTime;
+              }
+            }
+          }
+
+          etaSeconds = Math.max(0, Math.round(segmentTime - adjustment - reportAgeSeconds));
+        }
+      }
+
+      // FALLBACK: distance-based with road factor + dwell time
+      if (etaSeconds === null) {
+        const roadDistance = totalDistance * ROAD_DISTANCE_FACTOR;
+        const stopsInBetween = targetIdx - closestIdx - 1;
+        const dwellTotal = Math.max(0, stopsInBetween) * DWELL_TIME_PER_STOP_S;
+        const speedKmh = bus.velocidad >= MIN_SPEED_KMH ? bus.velocidad : DEFAULT_SPEED_KMH;
+        const speedMs = (speedKmh * 1000) / 3600;
+        etaSeconds = Math.max(0, Math.round(roadDistance / speedMs + dwellTotal - reportAgeSeconds));
+      }
 
       // Keep the variant with the shortest ETA (closest match)
       if (!bestEta || etaSeconds < bestEta.etaSeconds) {
