@@ -1,7 +1,7 @@
 /**
  * Minimal DBF file parser for STM shapefiles.
  * Handles dBASE III format with text (C) and numeric (N) fields.
- * Text fields are decoded from ISO-8859-1 (Latin-1).
+ * Text fields are decoded from UTF-8 (CKAN exports use UTF-8 despite the traditional Latin-1 DBF convention).
  */
 
 interface DbfField {
@@ -57,8 +57,8 @@ export function parseDbf(buffer: Buffer): DbfRecord[] {
     for (const field of fields) {
       const raw = buffer.slice(offset, offset + field.length);
       offset += field.length;
-      // Decode as Latin-1, trim whitespace
-      const str = raw.toString("latin1").trim();
+      // Decode as UTF-8 (CKAN DBF files use UTF-8, not the traditional Latin-1)
+      const str = raw.toString("utf8").trim();
 
       if (field.type === "N" && str !== "") {
         const num = parseFloat(str);
