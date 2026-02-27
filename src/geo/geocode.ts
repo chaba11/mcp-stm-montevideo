@@ -30,8 +30,15 @@ function isInMontevideo(lat: number, lon: number): boolean {
   );
 }
 
+/** Check if all tokens from the query appear in the target string. */
+function allTokensMatch(query: string, target: string): boolean {
+  const tokens = query.split(" ").filter(Boolean);
+  return tokens.length > 0 && tokens.every((t) => target.includes(t));
+}
+
 /**
  * Strategy 1: Search paradas whose street names match both calle1 and calle2.
+ * Uses token-based matching so "bv artigas" matches "bv gral artigas".
  * Returns the centroid of matched stops.
  */
 export function geocodeFromParadas(
@@ -48,7 +55,7 @@ export function geocodeFromParadas(
     const matches = paradas.filter((p) => {
       const calle = normalizeText(p.calle);
       const esquina = normalizeText(p.esquina);
-      return calle.includes(norm1) || esquina.includes(norm1);
+      return allTokensMatch(norm1, calle) || allTokensMatch(norm1, esquina);
     });
     if (matches.length === 0) return null;
     const lat = matches.reduce((s, p) => s + p.lat, 0) / matches.length;
@@ -62,8 +69,8 @@ export function geocodeFromParadas(
     const calle = normalizeText(p.calle);
     const esquina = normalizeText(p.esquina);
     return (
-      (calle.includes(norm1) && esquina.includes(norm2)) ||
-      (calle.includes(norm2) && esquina.includes(norm1))
+      (allTokensMatch(norm1, calle) && allTokensMatch(norm2, esquina)) ||
+      (allTokensMatch(norm2, calle) && allTokensMatch(norm1, esquina))
     );
   });
 
