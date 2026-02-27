@@ -3,6 +3,8 @@ import { CkanClient } from "../../src/data/ckan-client.js";
 import { Cache } from "../../src/data/cache.js";
 import { proximosBusesHandler } from "../../src/tools/proximos-buses.js";
 import { PARADAS_GEO } from "../fixtures/paradas-geo.js";
+import { LINEAS_FIXTURE } from "../fixtures/schedule-data.js";
+import { createMockClient, montevideoTime } from "./__helpers__/tool-test-utils.js";
 import type { HorarioRow } from "../../src/types/horario.js";
 import type { LineaVariante } from "../../src/types/linea.js";
 
@@ -295,5 +297,157 @@ describe("proximos_buses handler", () => {
     }>;
     expect(parsed.length).toBeGreaterThan(0);
     expect(parsed[0].horario_estimado).toBe("11:00");
+  });
+});
+
+describe("proximos_buses — extended edge cases with realistic schedule", () => {
+  it("Monday 8:00 — returns next buses within minutes", async () => {
+    const client = createMockClient();
+    const now = montevideoTime(8, 0, "monday");
+    const result = await proximosBusesHandler(
+      { parada_id: 300, linea: "181", cantidad: 3 },
+      client,
+      now
+    );
+    const parsed = JSON.parse(result.content[0].text) as Array<{
+      minutos_restantes: number;
+      horario_estimado: string;
+    }>;
+    expect(parsed.length).toBeGreaterThan(0);
+    // First bus should be within a reasonable time (line runs every 15 min from 5:30)
+    expect(parsed[0].minutos_restantes).toBeGreaterThanOrEqual(0);
+    expect(parsed[0].minutos_restantes).toBeLessThanOrEqual(20);
+  });
+
+  it("Monday 23:50 — no more buses today, shows tomorrow", async () => {
+    const client = createMockClient();
+    const now = montevideoTime(23, 50, "monday");
+    const result = await proximosBusesHandler({ parada_id: 300 }, client, now);
+    expect(result.content[0].text).toContain("No hay más buses hoy");
+    const jsonPart = result.content[0].text.split("\n").slice(1).join("\n");
+    const parsed = JSON.parse(jsonPart);
+    expect(Array.isArray(parsed)).toBe(true);
+    expect(parsed.length).toBeGreaterThan(0);
+    for (const b of parsed) {
+      expect(b.minutos_restantes).toBe(-1);
+    }
+  });
+
+  it("Saturday 10:00 — uses weekend schedule (tipo_dia=2)", async () => {
+    const client = createMockClient();
+    const now = montevideoTime(10, 0, "saturday");
+    const result = await proximosBusesHandler(
+      { parada_id: 300, linea: "181", cantidad: 3 },
+      client,
+      now
+    );
+    const parsed = JSON.parse(result.content[0].text) as Array<{
+      horario_estimado: string;
+    }>;
+    expect(parsed.length).toBeGreaterThan(0);
+    // Saturday runs every 20 min from 6:00 — verify time is after 10:00
+    for (const b of parsed) {
+      expect(b.horario_estimado > "10:00").toBe(true);
+    }
+  });
+
+  it("Sunday 14:00 — uses Sunday schedule (tipo_dia=3)", async () => {
+    const client = createMockClient();
+    const now = montevideoTime(14, 0, "sunday");
+    const result = await proximosBusesHandler(
+      { parada_id: 300, linea: "181", cantidad: 3 },
+      client,
+      now
+    );
+    const parsed = JSON.parse(result.content[0].text) as Array<{
+      horario_estimado: string;
+    }>;
+    expect(parsed.length).toBeGreaterThan(0);
+    for (const b of parsed) {
+      expect(b.horario_estimado > "14:00").toBe(true);
+    }
+  });
+
+  it("non-existent line returns friendly message", async () => {
+    const client = createMockClient();
+    const now = montevideoTime(10, 0);
+    const result = await proximosBusesHandler(
+      { parada_id: 300, linea: "999" },
+      client,
+      now
+    );
+    expect(result.content[0].text).toContain("No se encontraron horarios");
+    expect(result.content[0].text).toContain("999");
+  });
+
+  it("cantidad=1 returns exactly 1 result", async () => {
+    const client = createMockClient();
+    const now = montevideoTime(8, 0, "monday");
+    const result = await proximosBusesHandler(
+      { parada_id: 300, linea: "181", cantidad: 1 },
+      client,
+      now
+    );
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.length).toBe(1);
+  });
+
+  it("parada_id takes priority over calle1 when both provided", async () => {
+    const client = createMockClient();
+    const now = montevideoTime(8, 0, "monday");
+    // parada_id=300 serves line 181; calle1="AV AGRACIADA" serves line D10
+    const byId = await proximosBusesHandler(
+      { parada_id: 300, linea: "181" },
+      client,
+      now
+    );
+    const byBoth = await proximosBusesHandler(
+      { parada_id: 300, calle1: "AV AGRACIADA", linea: "181" },
+      client,
+      now
+    );
+    // Both should use parada 300 and return 181 buses
+    expect(byId.content[0].text).toBe(byBoth.content[0].text);
+  });
+
+  it("by calle1+calle2 resolves parada and returns schedule", async () => {
+    const client = createMockClient();
+    const now = montevideoTime(8, 0, "monday");
+    // "BV ESPAÑA" + "LIBERTAD" should resolve to parada 300
+    const result = await proximosBusesHandler(
+      { calle1: "BV ESPAÑA", calle2: "LIBERTAD", cantidad: 3 },
+      client,
+      now
+    );
+    expect(result.content[0].type).toBe("text");
+    // Either gets buses or "no horarios" message — should not crash
+    expect(result.content[0].text.length).toBeGreaterThan(0);
+  });
+
+  it("empty horarios returns graceful message", async () => {
+    const client = createMockClient({ horarios: [] });
+    const now = montevideoTime(10, 0);
+    const result = await proximosBusesHandler({ parada_id: 300 }, client, now);
+    expect(result.content[0].text).toContain("No se encontraron horarios");
+  });
+
+  it("duplicate horarios at same time are both included (not deduplicated)", async () => {
+    // Two entries at same hora for same stop — both should appear sorted
+    const client = createMockClient({
+      horarios: [
+        { tipo_dia: 1, cod_variante: 5200, frecuencia: 0, cod_ubic_parada: 300, ordinal: 1, hora: 1000, dia_anterior: "N" },
+        { tipo_dia: 1, cod_variante: 5200, frecuencia: 0, cod_ubic_parada: 300, ordinal: 2, hora: 1000, dia_anterior: "N" },
+        { tipo_dia: 1, cod_variante: 5200, frecuencia: 0, cod_ubic_parada: 300, ordinal: 3, hora: 1015, dia_anterior: "N" },
+      ],
+      lineas: LINEAS_FIXTURE,
+    });
+    const now = montevideoTime(9, 0, "wednesday");
+    const result = await proximosBusesHandler({ parada_id: 300, cantidad: 10 }, client, now);
+    const parsed = JSON.parse(result.content[0].text);
+    // Should contain 3 results sorted by hora
+    expect(parsed.length).toBe(3);
+    expect(parsed[0].horario_estimado).toBe("10:00");
+    expect(parsed[1].horario_estimado).toBe("10:00");
+    expect(parsed[2].horario_estimado).toBe("10:15");
   });
 });

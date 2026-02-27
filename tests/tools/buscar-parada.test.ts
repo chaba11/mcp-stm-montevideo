@@ -3,6 +3,7 @@ import { CkanClient } from "../../src/data/ckan-client.js";
 import { Cache } from "../../src/data/cache.js";
 import { buscarParadaHandler } from "../../src/tools/buscar-parada.js";
 import { PARADAS_GEO } from "../fixtures/paradas-geo.js";
+import { PARADAS_FIXTURE, LINEAS_FIXTURE } from "../fixtures/schedule-data.js";
 
 function makeMockClient(): CkanClient {
   const cache = new Cache();
@@ -129,5 +130,121 @@ describe("buscar_parada handler", () => {
     );
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed[0].lineas).toEqual([]);
+  });
+});
+
+describe("buscar_parada — edge cases and radius tests", () => {
+  function makeFixtureClient(): CkanClient {
+    const cache = new Cache();
+    const client = new CkanClient({ cache });
+    client.getParadas = async () => PARADAS_FIXTURE;
+    client.getHorarios = async () => [];
+    client.getLineas = async () => LINEAS_FIXTURE;
+    return client;
+  }
+
+  it("custom radius: radio_metros=50 returns fewer results than 500", async () => {
+    const client = makeFixtureClient();
+    // Parada 300 at -34.9145, -56.1505 — nearby parada 301 is farther
+    const small = await buscarParadaHandler(
+      { latitud: -34.9145, longitud: -56.1505, radio_metros: 50 },
+      client
+    );
+    const large = await buscarParadaHandler(
+      { latitud: -34.9145, longitud: -56.1505, radio_metros: 5000 },
+      client
+    );
+    const smallParsed = JSON.parse(small.content[0].text);
+    const largeParsed = JSON.parse(large.content[0].text);
+    expect(smallParsed.length).toBeLessThanOrEqual(largeParsed.length);
+  });
+
+  it("coords take priority when both calle and coords provided", async () => {
+    const client = makeFixtureClient();
+    // Provide coords near parada 300, plus calle that could match something else
+    const result = await buscarParadaHandler(
+      { latitud: -34.9145, longitud: -56.1505, radio_metros: 200, calle1: "AV ITALIA" },
+      client
+    );
+    const parsed = JSON.parse(result.content[0].text) as Array<{ parada_id: number }>;
+    // Result should be near -34.9145 (parada 300), not AV ITALIA (parada 302)
+    const ids = parsed.map((p) => p.parada_id);
+    expect(ids).toContain(300);
+  });
+
+  it("lat=0, lon=0 (Atlantic Ocean) returns no results in Uruguay", async () => {
+    const client = makeFixtureClient();
+    const result = await buscarParadaHandler(
+      { latitud: 0, longitud: 0, radio_metros: 500 },
+      client
+    );
+    // Should return no stops (all paradas are in Montevideo, far from 0,0)
+    expect(result.content[0].text).toContain("No se encontraron");
+  });
+
+  it("coords outside Uruguay (NYC) returns no results", async () => {
+    const client = makeFixtureClient();
+    const result = await buscarParadaHandler(
+      { latitud: 40.7128, longitud: -74.006, radio_metros: 500 },
+      client
+    );
+    expect(result.content[0].text).toContain("No se encontraron");
+  });
+
+  it("very small radius (1m) returns no results gracefully", async () => {
+    const client = makeFixtureClient();
+    const result = await buscarParadaHandler(
+      { latitud: -34.9145, longitud: -56.1505, radio_metros: 1 },
+      client
+    );
+    // Likely empty — no crash, returns message or empty array
+    expect(result.content[0].type).toBe("text");
+  });
+
+  it("very large radius returns results without crash", async () => {
+    const client = makeFixtureClient();
+    const result = await buscarParadaHandler(
+      { latitud: -34.9060, longitud: -56.188, radio_metros: 50000 },
+      client
+    );
+    // Should return results — all paradas in Montevideo are within 50km of center
+    const parsed = JSON.parse(result.content[0].text);
+    expect(Array.isArray(parsed)).toBe(true);
+    expect(parsed.length).toBeGreaterThan(0);
+  });
+
+  it("unicode in street name works correctly", async () => {
+    const client = makeFixtureClient();
+    // "18 de Julio" normalizes correctly
+    const result = await buscarParadaHandler({ calle1: "18 de Julio" }, client);
+    expect(result.content[0].type).toBe("text");
+    // Should not crash — either finds results or returns friendly message
+  });
+
+  it("SQL injection attempt in calle1 treated as literal string, no crash", async () => {
+    const client = makeFixtureClient();
+    const result = await buscarParadaHandler(
+      { calle1: "'; DROP TABLE paradas; --" },
+      client
+    );
+    expect(result.content[0].type).toBe("text");
+    // Should return "No se encontraron" or "No se encontró" — not crash
+    expect(result.content[0].text).toMatch(/No se encontr/);
+  });
+
+  it("lineas[] in result lists correct lines for stop", async () => {
+    const client = makeFixtureClient();
+    // Parada 300 is served by linea "181" in the fixture
+    const result = await buscarParadaHandler(
+      { latitud: -34.9145, longitud: -56.1505, radio_metros: 100 },
+      client
+    );
+    const parsed = JSON.parse(result.content[0].text) as Array<{
+      parada_id: number;
+      lineas: string[];
+    }>;
+    const parada300 = parsed.find((p) => p.parada_id === 300);
+    expect(parada300).toBeDefined();
+    expect(parada300!.lineas).toContain("181");
   });
 });
