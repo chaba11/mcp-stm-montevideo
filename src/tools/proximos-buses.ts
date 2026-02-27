@@ -105,10 +105,17 @@ export async function proximosBusesHandler(
     );
   }
 
-  const [horarios, lineas] = await Promise.all([
-    client.getHorarios(),
-    client.getLineas(),
-  ]);
+  let horarios, lineas;
+  try {
+    [horarios, lineas] = await Promise.all([
+      client.getHorarios(),
+      client.getLineas(),
+    ]);
+  } catch (err) {
+    return textResponse(
+      `Error al cargar los horarios del STM: ${err instanceof Error ? err.message : "Error desconocido"}.`
+    );
+  }
 
   const result = getNextBuses(
     { paradaId, linea, count: cantidad, now },

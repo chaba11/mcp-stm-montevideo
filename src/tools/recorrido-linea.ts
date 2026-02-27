@@ -129,11 +129,18 @@ export async function recorridoLineaHandler(
     return textResponse("Proporciona el número de línea (ej: 181, D10).");
   }
 
-  const [paradas, horarios, lineas] = await Promise.all([
-    client.getParadas(),
-    client.getHorarios(),
-    client.getLineas(),
-  ]);
+  let paradas, horarios, lineas;
+  try {
+    [paradas, horarios, lineas] = await Promise.all([
+      client.getParadas(),
+      client.getHorarios(),
+      client.getLineas(),
+    ]);
+  } catch (err) {
+    return textResponse(
+      `Error al cargar los datos del STM: ${err instanceof Error ? err.message : "Error desconocido"}.`
+    );
+  }
 
   const lineaUpper = linea.trim().toUpperCase();
   const varianteUpper = variante?.trim().toUpperCase();

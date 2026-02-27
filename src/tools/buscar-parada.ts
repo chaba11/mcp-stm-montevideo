@@ -73,7 +73,14 @@ export async function buscarParadaHandler(
 ): Promise<ToolResponse> {
   const { calle1, calle2, latitud, longitud, radio_metros = 300 } = args;
 
-  const paradas = await client.getParadas();
+  let paradas;
+  try {
+    paradas = await client.getParadas();
+  } catch (err) {
+    return textResponse(
+      `Error al cargar los datos del STM: ${err instanceof Error ? err.message : "Error desconocido"}.`
+    );
+  }
   if (paradas.length === 0) {
     return textResponse("No se pudieron cargar los datos de paradas del STM.");
   }

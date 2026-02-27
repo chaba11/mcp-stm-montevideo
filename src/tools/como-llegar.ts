@@ -379,10 +379,17 @@ export async function comoLlegarHandler(
     return textResponse("Proporciona origen_calle1 y destino_calle1.");
   }
 
-  const [paradas, lineas] = await Promise.all([
-    client.getParadas(),
-    client.getLineas(),
-  ]);
+  let paradas, lineas;
+  try {
+    [paradas, lineas] = await Promise.all([
+      client.getParadas(),
+      client.getLineas(),
+    ]);
+  } catch (err) {
+    return textResponse(
+      `Error al cargar los datos del STM: ${err instanceof Error ? err.message : "Error desconocido"}.`
+    );
+  }
 
   const [originPoint, destPoint] = await Promise.all([
     resolveLocation(origen_calle1, origen_calle2, paradas),
