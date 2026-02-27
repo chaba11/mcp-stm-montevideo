@@ -21,7 +21,7 @@ Este archivo se actualiza al final de cada loop completado.
 - [x] LOOP-09B: Tests — MCP protocol, e2e scenarios, error resilience (80+ total tests)
 - [x] LOOP-10: Packaging + README + npm prep
 - [x] LOOP-11: REST API wrapper + OpenAPI + Docker (Gemini/ChatGPT compat)
-- [ ] LOOP-11B: Tests — REST API endpoints & OpenAPI (145+ total tests)
+- [x] LOOP-11B: Tests — REST API endpoints & OpenAPI (285 tests, 15 skipped integration)
 
 ## Test targets
 
