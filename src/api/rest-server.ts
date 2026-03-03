@@ -113,6 +113,26 @@ export function createRestApp(
 
   // --- Routes ---
 
+  app.get("/privacy", (c) => {
+    return c.html(`<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="utf-8"><title>Política de Privacidad — STM Montevideo API</title>
+<style>body{font-family:sans-serif;max-width:700px;margin:40px auto;padding:0 20px;color:#333}</style>
+</head>
+<body>
+<h1>Política de Privacidad</h1>
+<p><strong>STM Montevideo API</strong> es un servicio de consulta de datos públicos del Sistema de Transporte Metropolitano (STM) de Montevideo, Uruguay.</p>
+<h2>Datos que recopilamos</h2>
+<p>Este servicio <strong>no recopila, almacena ni procesa datos personales</strong> de los usuarios. Las consultas realizadas a la API son stateless y no se registran de forma persistente.</p>
+<h2>Fuente de datos</h2>
+<p>Todos los datos de transporte provienen de los datos abiertos de la Intendencia de Montevideo, disponibles públicamente en <a href="https://ckan.montevideo.gub.uy">ckan.montevideo.gub.uy</a>.</p>
+<h2>Contacto</h2>
+<p>Para consultas: <a href="https://github.com/chaba11/mcp-stm-montevideo">github.com/chaba11/mcp-stm-montevideo</a></p>
+<p><small>Última actualización: marzo 2026</small></p>
+</body>
+</html>`);
+  });
+
   app.get("/api/health", (c) => {
     return c.json({
       status: "ok",
