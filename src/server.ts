@@ -13,14 +13,20 @@ import { registerComoLlegar } from "./tools/como-llegar.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const pkg = JSON.parse(readFileSync(join(__dirname, "../package.json"), "utf-8")) as {
-  version: string;
-};
+let pkgVersion = "0.1.0";
+try {
+  const pkg = JSON.parse(readFileSync(join(__dirname, "../package.json"), "utf-8")) as {
+    version: string;
+  };
+  pkgVersion = pkg.version;
+} catch {
+  // fallback when bundled path differs from source path
+}
 
 export function createServer(client?: CkanClient): McpServer {
   const server = new McpServer({
     name: "stm-montevideo",
-    version: pkg.version,
+    version: pkgVersion,
   });
 
   const ckanClient = client ?? new CkanClient();
