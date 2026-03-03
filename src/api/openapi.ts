@@ -17,6 +17,7 @@ function buildSpec() {
         "Esta API puede ser utilizada por ChatGPT (GPTs con Actions), Gemini (ADK) o cualquier cliente HTTP.",
     },
     servers: [
+      { url: "https://stm.paltickets.uy", description: "Production" },
       { url: "http://localhost:3000", description: "Local development" },
     ],
     paths: {
