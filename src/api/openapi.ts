@@ -6,7 +6,7 @@ import { stringify } from "yaml";
 
 function buildSpec() {
   return {
-    openapi: "3.0.3",
+    openapi: "3.1.0",
     info: {
       title: "STM Montevideo - API de transporte público",
       version: "0.1.0",
@@ -18,11 +18,11 @@ function buildSpec() {
     },
     servers: [
       { url: "https://stm.paltickets.uy", description: "Production" },
-      { url: "http://localhost:3000", description: "Local development" },
     ],
     paths: {
       "/api/paradas/buscar": {
         get: {
+          operationId: "buscarParadas",
           summary: "Buscar paradas cercanas",
           description: "Busca paradas del STM cercanas a una dirección, intersección o coordenadas GPS.",
           parameters: [
@@ -60,6 +60,7 @@ function buildSpec() {
       },
       "/api/buses/proximos": {
         get: {
+          operationId: "proximosBuses",
           summary: "Próximos buses en una parada",
           description: "Consulta los próximos ómnibus que pasan por una parada del STM.",
           parameters: [
@@ -98,6 +99,7 @@ function buildSpec() {
       },
       "/api/lineas/{numero}/recorrido": {
         get: {
+          operationId: "recorridoLinea",
           summary: "Recorrido de una línea",
           description: "Muestra el recorrido completo de una línea de ómnibus con todas sus paradas en orden.",
           parameters: [
@@ -144,6 +146,7 @@ function buildSpec() {
       },
       "/api/buses/{linea}/ubicacion": {
         get: {
+          operationId: "ubicacionBus",
           summary: "Ubicación en tiempo real",
           description: "Muestra la posición en tiempo real de los ómnibus de una línea (requiere credenciales API).",
           parameters: [
@@ -159,6 +162,7 @@ function buildSpec() {
       },
       "/api/como-llegar": {
         post: {
+          operationId: "comoLlegar",
           summary: "Calcular ruta en transporte público",
           description: "Calcula la mejor ruta entre dos puntos usando el transporte público de Montevideo.",
           requestBody: {
@@ -207,6 +211,7 @@ function buildSpec() {
       },
       "/api/health": {
         get: {
+          operationId: "healthCheck",
           summary: "Estado del servicio",
           description: "Verifica que la API está funcionando.",
           responses: {
