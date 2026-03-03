@@ -101,6 +101,16 @@ export function createRestApp(
     console.log(`${c.req.method} ${c.req.path} ${c.res.status} ${ms}ms`);
   });
 
+  // --- OAuth discovery (RFC 9728) ---
+  // Claude Desktop and Claude.ai check these proactively.
+  // Return valid metadata indicating this resource exists but has no auth servers.
+  app.get("/.well-known/oauth-protected-resource", (c) => {
+    return c.json({ resource: "https://stm.paltickets.uy/mcp" });
+  });
+  app.get("/.well-known/oauth-protected-resource/mcp", (c) => {
+    return c.json({ resource: "https://stm.paltickets.uy/mcp" });
+  });
+
   // --- Routes ---
 
   app.get("/api/health", (c) => {
