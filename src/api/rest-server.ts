@@ -14,6 +14,8 @@ import { recorridoLineaHandler } from "../tools/recorrido-linea.js";
 import { ubicacionBusHandler } from "../tools/ubicacion-bus.js";
 import { comoLlegarHandler } from "../tools/como-llegar.js";
 import { getOpenApiSpec } from "./openapi.js";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { createServer } from "../server.js";
 
 // Read package.json version at import time
 import { readFileSync } from "node:fs";
@@ -306,6 +308,18 @@ export function createRestApp(
       );
       return c.json(e.json, e.status);
     }
+  });
+
+  // MCP over HTTP — stateless Streamable HTTP transport
+  // Each request gets a fresh McpServer + transport (SDK requirement for stateless mode).
+  // The shared `client` (CkanClient with 24h cache) is reused across requests.
+  app.all("/mcp", async (c) => {
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      sessionIdGenerator: undefined, // stateless: no session tracking
+    });
+    const mcpServer = createServer(client);
+    await mcpServer.connect(transport);
+    return transport.handleRequest(c.req.raw);
   });
 
   // 404 fallback
