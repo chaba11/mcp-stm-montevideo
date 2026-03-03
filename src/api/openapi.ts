@@ -26,11 +26,8 @@ function buildSpec() {
           summary: "Buscar paradas cercanas",
           description:
             "Busca paradas del STM cercanas a un punto en Montevideo. " +
-            "Acepta cuatro modos de búsqueda (usar solo uno): " +
-            "(1) lugar: nombre de comercio, institución o punto de interés (ej: 'Hospital Maciel', 'Estadio Centenario'); " +
-            "(2) calle1+calle2: intersección de calles (ej: 'Bv España' + 'Libertad'); " +
-            "(3) calle1 solo: nombre de calle o dirección con número de puerta (ej: 'Bv España 2529'); " +
-            "(4) latitud+longitud: coordenadas GPS exactas.",
+            "Modos: lugar (comercio o institución), calle1+calle2 (intersección), " +
+            "calle1 solo (calle o dirección con número), o latitud+longitud (coordenadas GPS).",
           parameters: [
             {
               name: "lugar",
