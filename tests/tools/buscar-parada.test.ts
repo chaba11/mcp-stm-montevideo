@@ -246,6 +246,125 @@ describe("buscar_parada — address with door number", () => {
   });
 });
 
+describe("buscar_parada — lugar (geocoding de local/comercio)", () => {
+  // Stops near OSM Xmartlabs location (-34.9122909, -56.1587443)
+  function makeClientNearXmartlabs(): CkanClient {
+    const cache = new Cache();
+    const client = new CkanClient({ cache });
+    client.getParadas = async () => [
+      { id: 500, linea: "181", variante: 60, ordinal: 1, calle: "AV ITALIA", esquina: "JACKSON",  lat: -34.9123, lng: -56.1587 },
+      { id: 501, linea: "181", variante: 60, ordinal: 2, calle: "AV ITALIA", esquina: "ITURRIAGA", lat: -34.9125, lng: -56.1590 },
+    ];
+    client.getHorarios = async () => [];
+    client.getLineas  = async () => [];
+    return client;
+  }
+
+  it("finds stops near a geocoded place (LocalGeocoder + Nominatim fallback)", async () => {
+    // LocalGeocoder finds "Xmartlabs" from OSM data; stops are near its OSM location
+    const mockFetch = async (): Promise<Response> =>
+      new Response(JSON.stringify([]), { status: 200 });
+    const result = await buscarParadaHandler(
+      { lugar: "xmartlabs", radio_metros: 500 },
+      makeClientNearXmartlabs(),
+      mockFetch as typeof fetch
+    );
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.paradas).toBeDefined();
+    expect(Array.isArray(parsed.paradas)).toBe(true);
+    expect(parsed.paradas.length).toBeGreaterThan(0);
+    expect(parsed.lugar).toContain("Xmartlabs");
+  });
+
+  it("includes parada fields in lugar response", async () => {
+    const mockFetch = async (): Promise<Response> =>
+      new Response(JSON.stringify([]), { status: 200 });
+    const result = await buscarParadaHandler(
+      { lugar: "xmartlabs", radio_metros: 500 },
+      makeClientNearXmartlabs(),
+      mockFetch as typeof fetch
+    );
+    const parsed = JSON.parse(result.content[0].text);
+    const p = parsed.paradas[0];
+    expect(typeof p.parada_id).toBe("number");
+    expect(typeof p.nombre).toBe("string");
+    expect(typeof p.latitud).toBe("number");
+    expect(typeof p.longitud).toBe("number");
+    expect(typeof p.distancia_metros).toBe("number");
+    expect(Array.isArray(p.lineas)).toBe(true);
+  });
+
+  it("returns error when Nominatim finds no results for lugar", async () => {
+    const mockFetch = async (): Promise<Response> =>
+      new Response(JSON.stringify([]), { status: 200 });
+    const result = await buscarParadaHandler(
+      { lugar: "local_completamente_inventado_xyz" },
+      makeClientNearXmartlabs(),
+      mockFetch as typeof fetch
+    );
+    expect(result.content[0].text).toContain("No se encontró");
+  });
+
+  it("returns error when Nominatim returns only out-of-Montevideo results", async () => {
+    const mockFetch = async (): Promise<Response> =>
+      new Response(
+        JSON.stringify([{ lat: "40.7128", lon: "-74.0060", display_name: "NYC place", type: "place" }]),
+        { status: 200 }
+      );
+    const result = await buscarParadaHandler(
+      { lugar: "algún lugar" },
+      makeClientNearXmartlabs(),
+      mockFetch as typeof fetch
+    );
+    expect(result.content[0].text).toContain("No se encontró");
+  });
+
+  it("returns friendly message when both LocalGeocoder and Nominatim fail (network error)", async () => {
+    // Use a fictional place not in OSM data → LocalGeocoder returns null → Nominatim throws
+    const mockFetch = async (): Promise<Response> => {
+      throw new Error("Network error");
+    };
+    const result = await buscarParadaHandler(
+      { lugar: "lugar_ficticio_zzz_9999_not_in_osm" },
+      makeClientNearXmartlabs(),
+      mockFetch as typeof fetch
+    );
+    expect(result.content[0].text).toContain("No se pudo geocodificar");
+  });
+
+  it("returns no-stops message when geocoding succeeds but no stops are nearby", async () => {
+    const mockFetch = async (): Promise<Response> =>
+      new Response(xmartlabsNominatimResponse, { status: 200 });
+    const result = await buscarParadaHandler(
+      { lugar: "xmartlabs", radio_metros: 1 },
+      makeClientNearXmartlabs(),
+      mockFetch as typeof fetch
+    );
+    expect(result.content[0].text).toContain("No se encontraron paradas");
+  });
+
+  it("coords take priority over lugar when both provided", async () => {
+    // This should never happen in practice but ensure coords win
+    const mockFetch = async (): Promise<Response> =>
+      new Response(xmartlabsNominatimResponse, { status: 200 });
+    const cache = new Cache();
+    const client = new CkanClient({ cache });
+    client.getParadas = async () => [
+      { id: 99, linea: "405", variante: 60, ordinal: 1, calle: "TEST", esquina: "", lat: -34.5, lng: -55.0 },
+    ];
+    client.getHorarios = async () => [];
+    client.getLineas  = async () => [];
+    // Coords point to the middle of the Atlantic — no stops there
+    const result = await buscarParadaHandler(
+      { lugar: "xmartlabs", latitud: 0, longitud: 0, radio_metros: 100 },
+      client,
+      mockFetch as typeof fetch
+    );
+    // Nominatim should NOT be called since coords are provided — no stops near 0,0
+    expect(result.content[0].text).toContain("No se encontraron");
+  });
+});
+
 describe("buscar_parada — edge cases and radius tests", () => {
   function makeFixtureClient(): CkanClient {
     const cache = new Cache();
