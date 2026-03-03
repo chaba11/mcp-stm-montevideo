@@ -155,7 +155,29 @@ function buildSpec() {
           responses: {
             "200": {
               description: "Posiciones de buses o mensaje de indisponibilidad",
-              content: { "application/json": { schema: { type: "object" } } },
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      linea: { type: "string" },
+                      mensaje: { type: "string", description: "Mensaje de estado si el GPS no está disponible" },
+                      buses: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            id: { type: "string" },
+                            latitud: { type: "number" },
+                            longitud: { type: "number" },
+                            velocidad: { type: "number" },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
             },
           },
         },
