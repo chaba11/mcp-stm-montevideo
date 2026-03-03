@@ -24,32 +24,53 @@ function buildSpec() {
         get: {
           operationId: "buscarParadas",
           summary: "Buscar paradas cercanas",
-          description: "Busca paradas del STM cercanas a una dirección, intersección o coordenadas GPS.",
+          description:
+            "Busca paradas del STM cercanas a un punto en Montevideo. " +
+            "Acepta cuatro modos de búsqueda (usar solo uno): " +
+            "(1) lugar: nombre de comercio, institución o punto de interés (ej: 'Hospital Maciel', 'Estadio Centenario'); " +
+            "(2) calle1+calle2: intersección de calles (ej: 'Bv España' + 'Libertad'); " +
+            "(3) calle1 solo: nombre de calle o dirección con número de puerta (ej: 'Bv España 2529'); " +
+            "(4) latitud+longitud: coordenadas GPS exactas.",
           parameters: [
-            { name: "calle1", in: "query", schema: { type: "string" }, description: "Nombre de la calle o avenida", example: "Bv España" },
-            { name: "calle2", in: "query", schema: { type: "string" }, description: "Calle de intersección", example: "Libertad" },
+            {
+              name: "lugar",
+              in: "query",
+              schema: { type: "string" },
+              description: "Nombre de un local, comercio, institución o punto de interés en Montevideo (ej: 'Hospital Maciel', 'Estadio Centenario', 'xmartlabs')",
+              example: "Hospital Maciel",
+            },
+            { name: "calle1", in: "query", schema: { type: "string" }, description: "Nombre de la calle, avenida o dirección con número de puerta (ej: 'Bv España', 'Av Italia 1500')", example: "Bv España" },
+            { name: "calle2", in: "query", schema: { type: "string" }, description: "Calle de intersección (usar junto con calle1)", example: "Libertad" },
             { name: "latitud", in: "query", schema: { type: "number" }, description: "Latitud WGS84", example: -34.9145 },
             { name: "longitud", in: "query", schema: { type: "number" }, description: "Longitud WGS84", example: -56.1505 },
-            { name: "radio_metros", in: "query", schema: { type: "number", default: 300 }, description: "Radio de búsqueda en metros", example: 300 },
+            { name: "radio_metros", in: "query", schema: { type: "number", default: 300 }, description: "Radio de búsqueda en metros (por defecto: 300)", example: 300 },
           ],
           responses: {
             "200": {
-              description: "Lista de paradas encontradas",
+              description:
+                "Paradas encontradas. Si se usó `lugar`, la respuesta incluye el campo `lugar` con el nombre resuelto " +
+                "y las paradas dentro del campo `paradas`. Para los demás modos, la respuesta es un array directo.",
               content: {
                 "application/json": {
                   schema: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        parada_id: { type: "integer", description: "ID único de la parada" },
-                        nombre: { type: "string", description: "Nombre descriptivo (calle y esquina)" },
-                        latitud: { type: "number" },
-                        longitud: { type: "number" },
-                        distancia_metros: { type: "number" },
-                        lineas: { type: "array", items: { type: "string" }, description: "Líneas que pasan por esta parada" },
+                    oneOf: [
+                      {
+                        description: "Respuesta con lugar resuelto (cuando se usa el parámetro `lugar`)",
+                        type: "object",
+                        properties: {
+                          lugar: { type: "string", description: "Nombre del lugar geocodificado", example: "Hospital Maciel" },
+                          paradas: {
+                            type: "array",
+                            items: { $ref: "#/components/schemas/Parada" },
+                          },
+                        },
                       },
-                    },
+                      {
+                        description: "Array directo de paradas (para búsquedas por calle o coordenadas)",
+                        type: "array",
+                        items: { $ref: "#/components/schemas/Parada" },
+                      },
+                    ],
                   },
                 },
               },
@@ -258,6 +279,17 @@ function buildSpec() {
     },
     components: {
       schemas: {
+        Parada: {
+          type: "object",
+          properties: {
+            parada_id: { type: "integer", description: "ID único de la parada", example: 1234 },
+            nombre: { type: "string", description: "Nombre descriptivo (calle y esquina)", example: "BV ESPAÑA y LIBERTAD" },
+            latitud: { type: "number", example: -34.9145 },
+            longitud: { type: "number", example: -56.1505 },
+            distancia_metros: { type: "number", description: "Distancia al punto de búsqueda en metros", example: 85 },
+            lineas: { type: "array", items: { type: "string" }, description: "Líneas de ómnibus que pasan por esta parada", example: ["121", "181"] },
+          },
+        },
         Error: {
           type: "object",
           properties: {

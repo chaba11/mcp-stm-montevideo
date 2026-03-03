@@ -157,6 +157,7 @@ export function createRestApp(
   // buscar_parada
   app.get("/api/paradas/buscar", async (c) => {
     try {
+      const lugar = qstr(c.req.query("lugar"));
       const calle1 = qstr(c.req.query("calle1"));
       const calle2 = qstr(c.req.query("calle2"));
       const latitud = qnum(c.req.query("latitud"), "latitud");
@@ -176,9 +177,9 @@ export function createRestApp(
         return c.json(e.json, e.status);
       }
 
-      if (!calle1 && latitud === undefined) {
+      if (!lugar && !calle1 && latitud === undefined) {
         const e = errorJson(
-          "Proporciona al menos calle1 o latitud+longitud para buscar paradas.",
+          "Proporciona lugar, calle1 o latitud+longitud para buscar paradas.",
           "BAD_REQUEST",
           400
         );
@@ -186,7 +187,7 @@ export function createRestApp(
       }
 
       const result = await buscarParadaHandler(
-        { calle1, calle2, latitud, longitud, radio_metros },
+        { lugar, calle1, calle2, latitud, longitud, radio_metros },
         client
       );
       return c.json(parseToolResponse(result));
