@@ -3,6 +3,7 @@ import {
   geocodeFromParadas,
   geocodeFromNominatim,
   geocodeIntersection,
+  geocodeAddress,
   levenshteinDistance,
   allTokensFuzzyMatch,
   type NominatimResult,
@@ -254,5 +255,45 @@ describe("geocodeFromParadas — fuzzy fallback", () => {
     expect(result).not.toBeNull();
     // Should find the exact match stop (id=1)
     expect(result!.lat).toBeCloseTo(-34.9, 3);
+  });
+});
+
+describe("geocodeAddress", () => {
+  it("returns coordinates when Nominatim finds the address in Montevideo", async () => {
+    const mockResult: NominatimResult = [
+      { lat: "-34.912", lon: "-56.161", display_name: "2529, Bulevar España, Montevideo", type: "house" },
+    ];
+    const result = await geocodeAddress("Bulevar España", "2529", makeFetch(mockResult));
+    expect(result).not.toBeNull();
+    expect(result!.lat).toBeCloseTo(-34.912, 3);
+    expect(result!.lon).toBeCloseTo(-56.161, 3);
+  });
+
+  it("returns null when Nominatim returns empty results", async () => {
+    const result = await geocodeAddress("Bulevar España", "2529", makeFetch([]));
+    expect(result).toBeNull();
+  });
+
+  it("returns null when result is outside Montevideo bounding box", async () => {
+    const outsideResult: NominatimResult = [
+      { lat: "-33.0", lon: "-56.0", display_name: "España 2529, Salto, Uruguay", type: "house" },
+    ];
+    const result = await geocodeAddress("España", "2529", makeFetch(outsideResult));
+    expect(result).toBeNull();
+  });
+
+  it("throws when Nominatim returns HTTP error", async () => {
+    const failFetch = makeFetch([], false, 429);
+    await expect(geocodeAddress("España", "2529", failFetch)).rejects.toThrow("Nominatim error: HTTP 429");
+  });
+
+  it("uses first Montevideo result when multiple are returned", async () => {
+    const mockResult: NominatimResult = [
+      { lat: "-33.0", lon: "-56.0", display_name: "outside", type: "house" },   // outside MVD
+      { lat: "-34.920", lon: "-56.150", display_name: "inside MVD", type: "house" },
+    ];
+    const result = await geocodeAddress("España", "2529", makeFetch(mockResult));
+    expect(result).not.toBeNull();
+    expect(result!.lat).toBeCloseTo(-34.920, 3);
   });
 });

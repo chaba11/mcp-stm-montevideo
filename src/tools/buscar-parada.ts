@@ -3,7 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CkanClient } from "../data/ckan-client.js";
 import { findNearestParadas } from "../geo/distance.js";
 import { fuzzySearchParadas } from "../geo/search.js";
-import { geocodeIntersection } from "../geo/geocode.js";
+import { geocodeIntersection, geocodeAddress } from "../geo/geocode.js";
 import type { Parada } from "../types/parada.js";
 
 export interface ParadaResult {
@@ -27,11 +27,24 @@ export interface ToolResponse {
   content: Array<{ type: "text"; text: string }>;
 }
 
+// Matches a door/house number (3-5 digits) at the end of an address string.
+// E.g., "Bulevar España 2529" → calle="Bulevar España", numero="2529"
+const ADDRESS_NUMBER_REGEX = /^(.+?)\s+(\d{3,5})$/;
+
+/** Extract street name and door number from a combined address string, or null if no number found. */
+export function extractAddressNumber(query: string): { calle: string; numero: string } | null {
+  const match = query.trim().match(ADDRESS_NUMBER_REGEX);
+  if (!match) return null;
+  return { calle: match[1].trim(), numero: match[2] };
+}
+
 const INPUT_SCHEMA = {
   calle1: z
     .string()
     .optional()
-    .describe("Nombre de la calle o avenida (por ejemplo: Bv España, Av Italia)"),
+    .describe(
+      "Nombre de la calle o avenida, con número de puerta opcional (por ejemplo: 'Bv España', 'Av Italia 1500', 'Bulevar España 2529')"
+    ),
   calle2: z
     .string()
     .optional()
@@ -118,15 +131,37 @@ export async function buscarParadaHandler(
         centerLon = point.lon;
       }
     } else {
-      const matches = fuzzySearchParadas(calle1, paradas);
-      if (matches.length === 0) {
-        return textResponse(`No se encontraron paradas con el nombre "${calle1}".`);
+      // Check if calle1 contains a door number (e.g., "Bulevar España 2529")
+      const addressMatch = extractAddressNumber(calle1);
+      let geocoded = false;
+
+      if (addressMatch) {
+        try {
+          const point = await geocodeAddress(addressMatch.calle, addressMatch.numero);
+          if (point) {
+            centerLat = point.lat;
+            centerLon = point.lon;
+            geocoded = true;
+            // candidateIds remains null → pure distance-based search from exact address
+          }
+        } catch {
+          // Network error or Nominatim unavailable — fall through to fuzzy search
+        }
       }
-      const topScore = matches[0].score;
-      const topMatches = matches.filter((m) => m.score >= topScore * 0.6);
-      centerLat = topMatches.reduce((s, m) => s + m.lat, 0) / topMatches.length;
-      centerLon = topMatches.reduce((s, m) => s + m.lng, 0) / topMatches.length;
-      candidateIds = new Set(topMatches.map((m) => m.id));
+
+      if (!geocoded) {
+        // If a door number was detected but geocoding failed, search by street name only
+        const searchQuery = addressMatch ? addressMatch.calle : calle1;
+        const matches = fuzzySearchParadas(searchQuery, paradas);
+        if (matches.length === 0) {
+          return textResponse(`No se encontraron paradas con el nombre "${calle1}".`);
+        }
+        const topScore = matches[0].score;
+        const topMatches = matches.filter((m) => m.score >= topScore * 0.6);
+        centerLat = topMatches.reduce((s, m) => s + m.lat, 0) / topMatches.length;
+        centerLon = topMatches.reduce((s, m) => s + m.lng, 0) / topMatches.length;
+        candidateIds = new Set(topMatches.map((m) => m.id));
+      }
     }
   } else {
     return textResponse(
@@ -177,7 +212,8 @@ export function registerBuscarParada(server: McpServer, client: CkanClient): voi
       description:
         "Busca paradas del STM cercanas a una dirección, intersección o coordenadas en Montevideo. " +
         "Proporciona calle1+calle2 para una intersección, o latitud+longitud para coordenadas exactas. " +
-        "Si solo se proporciona calle1, realiza una búsqueda difusa por nombre de calle.",
+        "Si solo se proporciona calle1, acepta nombre de calle con número de puerta opcional (ej: 'Bv España 2529') " +
+        "o realiza búsqueda difusa por nombre de calle.",
       inputSchema: INPUT_SCHEMA,
     },
     (args) => buscarParadaHandler(args as BuscarParadaArgs, client)

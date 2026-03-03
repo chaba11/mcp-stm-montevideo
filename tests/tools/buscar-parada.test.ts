@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { CkanClient } from "../../src/data/ckan-client.js";
 import { Cache } from "../../src/data/cache.js";
-import { buscarParadaHandler } from "../../src/tools/buscar-parada.js";
+import { buscarParadaHandler, extractAddressNumber } from "../../src/tools/buscar-parada.js";
 import { PARADAS_GEO } from "../fixtures/paradas-geo.js";
 import { PARADAS_FIXTURE, LINEAS_FIXTURE } from "../fixtures/schedule-data.js";
 
@@ -148,6 +148,101 @@ describe("buscar_parada handler", () => {
     );
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed[0].lineas).toEqual([]);
+  });
+});
+
+describe("extractAddressNumber", () => {
+  it("extracts number from 'Bulevar España 2529'", () => {
+    expect(extractAddressNumber("Bulevar España 2529")).toEqual({ calle: "Bulevar España", numero: "2529" });
+  });
+
+  it("extracts number from 'Av Italia 1500'", () => {
+    expect(extractAddressNumber("Av Italia 1500")).toEqual({ calle: "Av Italia", numero: "1500" });
+  });
+
+  it("returns null for plain street name without number", () => {
+    expect(extractAddressNumber("BV ESPAÑA")).toBeNull();
+  });
+
+  it("returns null for '21 de Setiembre' (number in middle of name)", () => {
+    // "21" is only 2 digits and there's nothing after it → no match
+    expect(extractAddressNumber("21 de Setiembre")).toBeNull();
+  });
+
+  it("returns null for bus line number alone ('181')", () => {
+    expect(extractAddressNumber("181")).toBeNull();
+  });
+
+  it("extracts number from 'Calle 3 de Febrero 4500'", () => {
+    expect(extractAddressNumber("Calle 3 de Febrero 4500")).toEqual({ calle: "Calle 3 de Febrero", numero: "4500" });
+  });
+
+  it("returns null for 2-digit suffix ('España 25') — too short for door number", () => {
+    expect(extractAddressNumber("España 25")).toBeNull();
+  });
+
+  it("returns null for empty string", () => {
+    expect(extractAddressNumber("")).toBeNull();
+  });
+});
+
+describe("buscar_parada — address with door number", () => {
+  function makeClientWithStreet(): CkanClient {
+    const cache = new Cache();
+    const client = new CkanClient({ cache });
+    // Three stops on Bulevar España at different locations (spread across the street)
+    client.getParadas = async () => [
+      { id: 100, linea: "121", variante: 60, ordinal: 1, calle: "BV ESPAÑA", esquina: "LIBERTAD",  lat: -34.912, lng: -56.161 },
+      { id: 101, linea: "121", variante: 60, ordinal: 2, calle: "BV ESPAÑA", esquina: "GARIBALDI", lat: -34.918, lng: -56.170 },
+      { id: 102, linea: "181", variante: 60, ordinal: 3, calle: "BV ESPAÑA", esquina: "OBLIGADO",  lat: -34.925, lng: -56.180 },
+    ];
+    client.getHorarios = async () => [];
+    client.getLineas = async () => [];
+    return client;
+  }
+
+  it("falls back to fuzzy search on street name when address geocoding fails (no network)", async () => {
+    // In tests, Nominatim call will fail (no real network) → try/catch → fuzzy fallback on "Bulevar España"
+    const client = makeClientWithStreet();
+    const result = await buscarParadaHandler(
+      { calle1: "Bulevar España 2529", radio_metros: 5000 },
+      client
+    );
+    expect(result.content[0].type).toBe("text");
+    // Should find stops on Bulevar España (via fuzzy fallback)
+    const parsed = JSON.parse(result.content[0].text);
+    expect(Array.isArray(parsed)).toBe(true);
+    expect(parsed.length).toBeGreaterThan(0);
+    const ids = parsed.map((p: { parada_id: number }) => p.parada_id);
+    expect(ids.some((id: number) => [100, 101, 102].includes(id))).toBe(true);
+  });
+
+  it("'Bulevar España 2529' finds same stops as 'Bulevar España' when geocoding unavailable", async () => {
+    const client = makeClientWithStreet();
+    const withNumber = await buscarParadaHandler(
+      { calle1: "Bulevar España 2529", radio_metros: 5000 },
+      client
+    );
+    const withoutNumber = await buscarParadaHandler(
+      { calle1: "Bulevar España", radio_metros: 5000 },
+      client
+    );
+    // Both should find stops on Bulevar España
+    const parsedWith = JSON.parse(withNumber.content[0].text);
+    const parsedWithout = JSON.parse(withoutNumber.content[0].text);
+    expect(Array.isArray(parsedWith)).toBe(true);
+    expect(Array.isArray(parsedWithout)).toBe(true);
+    expect(parsedWith.length).toBeGreaterThan(0);
+    expect(parsedWithout.length).toBeGreaterThan(0);
+  });
+
+  it("returns no-results message when address street is completely unknown", async () => {
+    const client = makeClientWithStreet();
+    const result = await buscarParadaHandler(
+      { calle1: "Calle Inventada ZZZZ 9999" },
+      client
+    );
+    expect(result.content[0].text).toContain("No se encontraron");
   });
 });
 

@@ -179,6 +179,40 @@ export async function geocodeFromNominatim(
 }
 
 /**
+ * Geocode a specific street address (with door/house number) using Nominatim structured search.
+ * Returns coordinates of the exact address, or null if not found in Montevideo.
+ */
+export async function geocodeAddress(
+  calle: string,
+  numero: string,
+  fetchFn: FetchFn = fetch
+): Promise<GeoPoint | null> {
+  const params = new URLSearchParams({
+    street: `${numero} ${calle}`,
+    city: "Montevideo",
+    country: "Uruguay",
+    format: "json",
+    limit: "3",
+  });
+  const url = `${NOMINATIM_URL}?${params.toString()}`;
+
+  const res = await fetchFn(url, {
+    headers: { "User-Agent": USER_AGENT, "Accept-Language": "es" },
+  });
+  if (!res.ok) throw new Error(`Nominatim error: HTTP ${res.status}`);
+
+  const results = (await res.json()) as NominatimResult;
+  if (!results || results.length === 0) return null;
+
+  const mvdResults = results.filter((r) =>
+    isInMontevideo(parseFloat(r.lat), parseFloat(r.lon))
+  );
+  if (mvdResults.length === 0) return null;
+
+  return { lat: parseFloat(mvdResults[0].lat), lon: parseFloat(mvdResults[0].lon) };
+}
+
+/**
  * Geocode a Montevideo street intersection.
  * Tries paradas first, falls back to Nominatim.
  */
