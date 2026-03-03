@@ -323,6 +323,7 @@ export function createRestApp(
   app.post("/mcp", async (c) => {
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined, // stateless: no session tracking
+      enableJsonResponse: true, // return JSON instead of SSE — required for Claude.ai
     });
     const mcpServer = createServer(client);
     await mcpServer.connect(transport);
