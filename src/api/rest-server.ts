@@ -85,8 +85,13 @@ export function createRestApp(
 
   const app = new Hono();
 
-  // CORS
-  app.use("*", cors());
+  // CORS — expose Mcp-Session-Id for browser-based MCP clients (Claude.ai)
+  app.use("*", cors({
+    origin: "*",
+    allowHeaders: ["Content-Type", "Accept", "Authorization", "Mcp-Session-Id"],
+    exposeHeaders: ["Mcp-Session-Id"],
+    allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
+  }));
 
   // Request logging
   app.use("*", async (c, next) => {
@@ -313,13 +318,23 @@ export function createRestApp(
   // MCP over HTTP — stateless Streamable HTTP transport
   // Each request gets a fresh McpServer + transport (SDK requirement for stateless mode).
   // The shared `client` (CkanClient with 24h cache) is reused across requests.
-  app.all("/mcp", async (c) => {
+  // POST only: GET would open an infinite SSE stream that times out behind Cloudflare (524).
+  // Stateless servers SHOULD return 405 for GET/DELETE per MCP spec.
+  app.post("/mcp", async (c) => {
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined, // stateless: no session tracking
     });
     const mcpServer = createServer(client);
     await mcpServer.connect(transport);
     return transport.handleRequest(c.req.raw);
+  });
+
+  app.on(["GET", "DELETE"], "/mcp", (c) => {
+    return c.json(
+      { jsonrpc: "2.0", error: { code: -32000, message: "Method not allowed. Use POST." }, id: null },
+      405,
+      { Allow: "POST" }
+    );
   });
 
   // 404 fallback
