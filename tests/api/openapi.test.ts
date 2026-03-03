@@ -13,8 +13,8 @@ describe("OpenAPI spec — structure", () => {
     expect(typeof spec).toBe("object");
   });
 
-  it("has openapi 3.0.x version", () => {
-    expect(spec.openapi).toMatch(/^3\.0\.\d+$/);
+  it("has openapi 3.1.x version", () => {
+    expect(spec.openapi).toMatch(/^3\.1\.\d+$/);
   });
 
   it("has info.title and info.description", () => {
