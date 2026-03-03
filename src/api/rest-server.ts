@@ -321,13 +321,29 @@ export function createRestApp(
   // POST only: GET would open an infinite SSE stream that times out behind Cloudflare (524).
   // Stateless servers SHOULD return 405 for GET/DELETE per MCP spec.
   app.post("/mcp", async (c) => {
+    // Claude.ai sends Accept: application/json without text/event-stream.
+    // The SDK rejects this with 406 before enableJsonResponse takes effect.
+    // Patch the Accept header so the SDK validation passes, then enableJsonResponse
+    // ensures the response is plain JSON (no SSE).
+    const headers = new Headers(c.req.raw.headers);
+    if (!headers.get("accept")?.includes("text/event-stream")) {
+      headers.set("accept", `${headers.get("accept") || ""}, text/event-stream`.replace(/^, /, ""));
+    }
+    const patchedRequest = new Request(c.req.raw.url, {
+      method: c.req.raw.method,
+      headers,
+      body: c.req.raw.body,
+      // @ts-expect-error duplex is needed for streaming bodies
+      duplex: "half",
+    });
+
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined, // stateless: no session tracking
       enableJsonResponse: true, // return JSON instead of SSE — required for Claude.ai
     });
     const mcpServer = createServer(client);
     await mcpServer.connect(transport);
-    return transport.handleRequest(c.req.raw);
+    return transport.handleRequest(patchedRequest);
   });
 
   app.on(["GET", "DELETE"], "/mcp", (c) => {
