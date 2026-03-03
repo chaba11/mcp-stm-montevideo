@@ -3,6 +3,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --include=dev
 COPY . .
+RUN npm run build-stm-data
 RUN npm run build
 
 FROM node:20-alpine

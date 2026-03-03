@@ -6,6 +6,11 @@
  * API docs: https://api.montevideo.gub.uy/apidocs/publictransport
  */
 
+import { withTimeout } from "./fetch-with-timeout.js";
+
+const TOKEN_TIMEOUT_MS = 15_000; // 15s for OAuth token
+const API_TIMEOUT_MS = 15_000; // 15s for API calls
+
 export interface BusPosition {
   id_vehiculo: string;
   latitud: number;
@@ -105,11 +110,15 @@ export class GpsClient {
       client_secret: this.clientSecret!,
     }).toString();
 
-    const response = await this.fetchFn(TOKEN_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body,
-    });
+    const response = await withTimeout(
+      this.fetchFn(TOKEN_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body,
+      }),
+      TOKEN_TIMEOUT_MS,
+      TOKEN_URL,
+    );
 
     if (!response.ok) {
       throw new Error(`Token request failed: HTTP ${response.status}`);
@@ -136,9 +145,11 @@ export class GpsClient {
       const token = await this.fetchToken();
       const url = `${API_BASE}/buses?lines=${encodeURIComponent(linea)}`;
 
-      const response = await this.fetchFn(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await withTimeout(
+        this.fetchFn(url, { headers: { Authorization: `Bearer ${token}` } }),
+        API_TIMEOUT_MS,
+        url,
+      );
 
       if (!response.ok) {
         throw new Error(`API request failed: HTTP ${response.status}`);
@@ -170,9 +181,11 @@ export class GpsClient {
   async fetchBusstops(): Promise<GpsBusstop[]> {
     const token = await this.fetchToken();
     const url = `${API_BASE}/buses/busstops`;
-    const response = await this.fetchFn(url, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const response = await withTimeout(
+      this.fetchFn(url, { headers: { Authorization: `Bearer ${token}` } }),
+      API_TIMEOUT_MS,
+      url,
+    );
     if (!response.ok) {
       throw new Error(`API request failed: HTTP ${response.status}`);
     }
@@ -200,9 +213,11 @@ export class GpsClient {
         `${API_BASE}/buses/busstops/${paradaId}/upcomingbuses` +
         `?lines=${encodeURIComponent(lines.join(","))}&amountperline=${amount}`;
 
-      const response = await this.fetchFn(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await withTimeout(
+        this.fetchFn(url, { headers: { Authorization: `Bearer ${token}` } }),
+        API_TIMEOUT_MS,
+        url,
+      );
 
       if (!response.ok) {
         throw new Error(`API request failed: HTTP ${response.status}`);

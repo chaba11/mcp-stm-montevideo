@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, unlinkSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CkanClient } from "../../src/data/ckan-client.js";
@@ -424,6 +424,91 @@ describe("CkanClient", () => {
       client.clearCache();
       await client.getHorarios();
       expect(zipFetchCount).toBe(2);
+    });
+  });
+
+  // ── local JSON data loading ────────────────────────────────────────────────
+
+  describe("local JSON data loading", () => {
+    const dataDir = join(__dirname, "../../src/data");
+    const paradasJsonPath = join(dataDir, "stm-paradas.json");
+    const horariosJsonPath = join(dataDir, "stm-horarios.json");
+    const lineasJsonPath = join(dataDir, "stm-lineas.json");
+
+    const sampleParadas = [
+      { id: 1, linea: "181", variante: 52, ordinal: 1, calle: "BV ESPAÑA", esquina: "LIBERTAD", lat: -34.9, lng: -56.1 },
+    ];
+    const sampleHorarios = [
+      { tipo_dia: 1, cod_variante: 52, frecuencia: 5000, cod_ubic_parada: 1, ordinal: 1, hora: 500, dia_anterior: "N" },
+    ];
+    const sampleLineas = [
+      { gid: 1, codLinea: 181, descLinea: "181", ordinalSublinea: 1, codSublinea: 1, descSublinea: "TEST", codVariante: 52, descVariante: "A", codOrigen: 1, descOrigen: "ORIG", codDestino: 2, descDestino: "DEST" },
+    ];
+
+    // Cleanup helper
+    function removeIfExists(path: string) {
+      if (existsSync(path)) unlinkSync(path);
+    }
+
+    afterEach(() => {
+      removeIfExists(paradasJsonPath);
+      removeIfExists(horariosJsonPath);
+      removeIfExists(lineasJsonPath);
+    });
+
+    it("getParadas loads from local JSON when file exists", async () => {
+      writeFileSync(paradasJsonPath, JSON.stringify(sampleParadas), "utf-8");
+      // fetchFn should never be called — use one that throws
+      const fetchFn = composeFetch(mockNetworkError(""));
+      const client = new CkanClient({ cache, fetchFn });
+
+      const paradas = await client.getParadas();
+      expect(paradas).toEqual(sampleParadas);
+    });
+
+    it("getHorarios loads from local JSON when file exists", async () => {
+      writeFileSync(horariosJsonPath, JSON.stringify(sampleHorarios), "utf-8");
+      const fetchFn = composeFetch(mockNetworkError(""));
+      const client = new CkanClient({ cache, fetchFn });
+
+      const horarios = await client.getHorarios();
+      expect(horarios).toEqual(sampleHorarios);
+    });
+
+    it("getLineas loads from local JSON when file exists", async () => {
+      writeFileSync(lineasJsonPath, JSON.stringify(sampleLineas), "utf-8");
+      const fetchFn = composeFetch(mockNetworkError(""));
+      const client = new CkanClient({ cache, fetchFn });
+
+      const lineas = await client.getLineas();
+      expect(lineas).toEqual(sampleLineas);
+    });
+
+    it("getParadas falls back to CKAN when local JSON does not exist", async () => {
+      removeIfExists(paradasJsonPath);
+      const paradasZip = readFileSync(join(fixturesDir, "paradas-sample.zip"));
+      const fetchFn = composeFetch(
+        mockAnyPackageResponse(FAKE_PARADAS_RESOURCE),
+        mockGenerarZipResponse("nom_tab=v_uptu_paradas", "/sit/tmp/v_uptu_paradas.zip"),
+        mockBinaryDownload("v_uptu_paradas.zip", paradasZip)
+      );
+      const client = new CkanClient({ cache, fetchFn });
+
+      const paradas = await client.getParadas();
+      expect(paradas.length).toBeGreaterThan(0);
+      expect(paradas[0].id).toBe(546);
+    });
+
+    it("local JSON data is cached in memory after first load", async () => {
+      writeFileSync(paradasJsonPath, JSON.stringify(sampleParadas), "utf-8");
+      const fetchFn = composeFetch(mockNetworkError(""));
+      const client = new CkanClient({ cache, fetchFn });
+
+      const first = await client.getParadas();
+      // Remove file — should still return cached data
+      removeIfExists(paradasJsonPath);
+      const second = await client.getParadas();
+      expect(second).toEqual(first);
     });
   });
 });

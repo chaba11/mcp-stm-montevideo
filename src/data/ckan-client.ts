@@ -1,7 +1,11 @@
 import AdmZip from "adm-zip";
 import { parse } from "csv-parse/sync";
+import { existsSync, readFileSync } from "fs";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import { Cache } from "./cache.js";
 import { parseDbf } from "./dbf-parser.js";
+import { withTimeout } from "./fetch-with-timeout.js";
 import { utm21SToWgs84 } from "./utm-converter.js";
 import type { Parada } from "../types/parada.js";
 import type { HorarioRow } from "../types/horario.js";
@@ -10,6 +14,11 @@ import type { LineaVariante } from "../types/linea.js";
 const CKAN_BASE = "https://ckan.montevideo.gub.uy/api/3/action";
 
 const TTL_24H = 24 * 60 * 60 * 1000;
+
+// Timeouts
+const METADATA_TIMEOUT_MS = 15_000; // 15s for package_show
+const ZIP_GENERATION_TIMEOUT_MS = 90_000; // 90s for generar_zip2 (generates on demand)
+const DOWNLOAD_TIMEOUT_MS = 60_000; // 60s for ZIP downloads
 
 const HORARIOS_PACKAGE = "horarios-de-omnibus-urbanos-por-parada-stm";
 const PARADAS_PACKAGE =
@@ -35,6 +44,26 @@ interface CkanResource {
   url: string;
 }
 
+/** Find a pre-fetched STM JSON file, checking dev and dist locations. */
+function findStmDataPath(filename: string): string | null {
+  const dir = dirname(fileURLToPath(import.meta.url));
+  // Dev (vitest/tsx): src/data/ckan-client.ts → data at src/data/
+  const devPath = join(dir, filename);
+  if (existsSync(devPath)) return devPath;
+  // Bundle (dist/index.js): data at dist/data/
+  const distPath = join(dir, "data", filename);
+  if (existsSync(distPath)) return distPath;
+  return null;
+}
+
+/** Load a pre-fetched JSON file, returning null if not found. */
+function loadLocalJson<T>(filename: string): T | null {
+  const path = findStmDataPath(filename);
+  if (!path) return null;
+  const raw = readFileSync(path, "utf-8");
+  return JSON.parse(raw) as T;
+}
+
 export class CkanClient {
   private cache: Cache;
   private fetchFn: FetchFn;
@@ -54,7 +83,7 @@ export class CkanClient {
     if (cached) return cached;
 
     const url = `${CKAN_BASE}/package_show?id=${encodeURIComponent(packageId)}`;
-    const res = await this.fetchFn(url);
+    const res = await withTimeout(this.fetchFn(url), METADATA_TIMEOUT_MS, url);
 
     if (!res.ok) {
       throw new Error(`CKAN package_show failed for "${packageId}": HTTP ${res.status}`);
@@ -78,7 +107,7 @@ export class CkanClient {
    * Download a binary file and return as Buffer.
    */
   private async downloadBinary(url: string): Promise<Buffer> {
-    const res = await this.fetchFn(url);
+    const res = await withTimeout(this.fetchFn(url), DOWNLOAD_TIMEOUT_MS, url);
     if (!res.ok) {
       throw new Error(`Download failed for ${url}: HTTP ${res.status}`);
     }
@@ -111,7 +140,22 @@ export class CkanClient {
    * and may be cleaned up by the server, causing 404s if hardcoded.
    */
   private async resolveDownloadUrl(packageId: string, resourcePattern: string): Promise<string> {
+    // Check if we have a cached resolved URL (avoids re-triggering generar_zip2)
+    const resolvedCacheKey = `resolved:${packageId}:${resourcePattern}`;
+    const cachedUrl = this.cache.get<string>(resolvedCacheKey);
+    if (cachedUrl) return cachedUrl;
+
     const resources = await this.getPackageResources(packageId);
+
+    // Prefer direct .zip URLs over generar_zip2 (avoids on-demand ZIP generation)
+    const directResource = resources.find(
+      (r) => r.url.includes(resourcePattern) && r.url.endsWith(".zip") && !r.url.includes("generar_zip2"),
+    );
+    if (directResource) {
+      this.cache.set(resolvedCacheKey, directResource.url, TTL_24H);
+      return directResource.url;
+    }
+
     const resource = resources.find(
       (r) => r.url.includes(resourcePattern) && (r.url.endsWith(".zip") || r.url.includes("generar_zip2")),
     );
@@ -126,11 +170,12 @@ export class CkanClient {
 
     // Direct download URLs can be used as-is
     if (!url.includes("generar_zip2")) {
+      this.cache.set(resolvedCacheKey, url, TTL_24H);
       return url;
     }
 
-    // generar_zip2.php generates a ZIP on demand and returns HTML with a form redirect
-    const res = await this.fetchFn(url);
+    // generar_zip2.php generates a ZIP on demand — use longer timeout
+    const res = await withTimeout(this.fetchFn(url), ZIP_GENERATION_TIMEOUT_MS, url);
     if (!res.ok) {
       throw new Error(`Failed to trigger ZIP generation at ${url}: HTTP ${res.status}`);
     }
@@ -145,7 +190,10 @@ export class CkanClient {
       );
     }
 
-    return new URL(match[1], url).href;
+    const resolvedUrl = new URL(match[1], url).href;
+    // Cache the resolved URL for 1h (the /sit/tmp/ ZIPs are ephemeral but last a while)
+    this.cache.set(resolvedCacheKey, resolvedUrl, 60 * 60 * 1000);
+    return resolvedUrl;
   }
 
   /**
@@ -156,6 +204,12 @@ export class CkanClient {
     const cacheKey = "paradas";
     const cached = this.cache.get<Parada[]>(cacheKey);
     if (cached) return cached;
+
+    const local = loadLocalJson<Parada[]>("stm-paradas.json");
+    if (local) {
+      this.cache.set(cacheKey, local, TTL_24H);
+      return local;
+    }
 
     const downloadUrl = await this.resolveDownloadUrl(PARADAS_PACKAGE, PARADAS_RESOURCE_PATTERN);
     const dbfBuffer = await this.downloadAndExtract(downloadUrl, /\.dbf$/i);
@@ -188,6 +242,12 @@ export class CkanClient {
     const cached = this.cache.get<HorarioRow[]>(cacheKey);
     if (cached) return cached;
 
+    const local = loadLocalJson<HorarioRow[]>("stm-horarios.json");
+    if (local) {
+      this.cache.set(cacheKey, local, TTL_24H);
+      return local;
+    }
+
     const downloadUrl = await this.resolveDownloadUrl(HORARIOS_PACKAGE, HORARIOS_RESOURCE_PATTERN);
     const csvBuffer = await this.downloadAndExtract(downloadUrl, /\.csv$/i);
     const csvText = csvBuffer.toString("utf-8");
@@ -215,6 +275,12 @@ export class CkanClient {
     const cacheKey = "lineas";
     const cached = this.cache.get<LineaVariante[]>(cacheKey);
     if (cached) return cached;
+
+    const local = loadLocalJson<LineaVariante[]>("stm-lineas.json");
+    if (local) {
+      this.cache.set(cacheKey, local, TTL_24H);
+      return local;
+    }
 
     const downloadUrl = await this.resolveDownloadUrl(LINEAS_PACKAGE, LINEAS_RESOURCE_PATTERN);
     const dbfBuffer = await this.downloadAndExtract(downloadUrl, /\.dbf$/i);

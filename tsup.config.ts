@@ -11,12 +11,20 @@ export default defineConfig([
       js: "#!/usr/bin/env node",
     },
     onSuccess: async () => {
-      const src = "src/data/mvd-geocoder-data.json";
-      const dest = "dist/data/mvd-geocoder-data.json";
-      if (existsSync(src)) {
-        mkdirSync("dist/data", { recursive: true });
-        copyFileSync(src, dest);
-        console.log(`Copied ${src} → ${dest}`);
+      mkdirSync("dist/data", { recursive: true });
+      const dataToCopy = [
+        "mvd-geocoder-data.json",
+        "stm-paradas.json",
+        "stm-horarios.json",
+        "stm-lineas.json",
+      ];
+      for (const file of dataToCopy) {
+        const src = `src/data/${file}`;
+        const dest = `dist/data/${file}`;
+        if (existsSync(src)) {
+          copyFileSync(src, dest);
+          console.log(`Copied ${src} → ${dest}`);
+        }
       }
     },
   },

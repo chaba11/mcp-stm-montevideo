@@ -24,7 +24,8 @@
     "start": "node dist/index.js",
     "start:api": "node dist/api/index.js",
     "dev:api": "tsx watch src/api/index.ts",
-    "build-geo-data": "npx tsx scripts/fetch-mvd-osm-data.ts"
+    "build-geo-data": "npx tsx scripts/fetch-mvd-osm-data.ts",
+    "build-stm-data": "npx tsx scripts/fetch-stm-data.ts"
   },
   "repository": {
     "type": "git",

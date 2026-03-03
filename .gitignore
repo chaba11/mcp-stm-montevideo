@@ -3,3 +3,8 @@ dist/
 .env
 *.Zone.Identifier
 .mcp.json
+
+# Generated STM data (run npm run build-stm-data to regenerate)
+src/data/stm-paradas.json
+src/data/stm-horarios.json
+src/data/stm-lineas.json
