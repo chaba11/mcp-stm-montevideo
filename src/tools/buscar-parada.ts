@@ -3,7 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CkanClient } from "../data/ckan-client.js";
 import { findNearestParadas } from "../geo/distance.js";
 import { fuzzySearchParadas } from "../geo/search.js";
-import { geocodeIntersection, geocodeAddress } from "../geo/geocode.js";
+import { geocodeIntersection, geocodeAddress, geocodePlace } from "../geo/geocode.js";
 import type { Parada } from "../types/parada.js";
 
 export interface ParadaResult {
@@ -16,6 +16,7 @@ export interface ParadaResult {
 }
 
 export interface BuscarParadaArgs {
+  lugar?: string;
   calle1?: string;
   calle2?: string;
   latitud?: number;
@@ -39,6 +40,12 @@ export function extractAddressNumber(query: string): { calle: string; numero: st
 }
 
 const INPUT_SCHEMA = {
+  lugar: z
+    .string()
+    .optional()
+    .describe(
+      "Nombre de un local, comercio, institución o punto de interés en Montevideo (por ejemplo: 'xmartlabs', 'Hospital Maciel', 'Estadio Centenario'). Se geocodifica automáticamente."
+    ),
   calle1: z
     .string()
     .optional()
@@ -79,12 +86,14 @@ function textResponse(text: string): ToolResponse {
 
 /**
  * Core handler logic for buscar_parada — exported for direct unit testing.
+ * fetchFn is injectable for tests to mock Nominatim calls.
  */
 export async function buscarParadaHandler(
   args: BuscarParadaArgs,
-  client: CkanClient
+  client: CkanClient,
+  fetchFn: typeof fetch = fetch
 ): Promise<ToolResponse> {
-  const { calle1, calle2, latitud, longitud, radio_metros = 300 } = args;
+  const { lugar, calle1, calle2, latitud, longitud, radio_metros = 300 } = args;
 
   let paradas;
   try {
@@ -103,13 +112,28 @@ export async function buscarParadaHandler(
   let centerLat: number;
   let centerLon: number;
   let candidateIds: Set<number> | null = null;
+  let lugarDisplayName: string | null = null;
 
   if (latitud !== undefined && longitud !== undefined) {
     centerLat = latitud;
     centerLon = longitud;
+  } else if (lugar) {
+    try {
+      const point = await geocodePlace(lugar, fetchFn);
+      if (!point) {
+        return textResponse(`No se encontró el lugar "${lugar}" en Montevideo.`);
+      }
+      centerLat = point.lat;
+      centerLon = point.lon;
+      lugarDisplayName = point.displayName;
+    } catch {
+      return textResponse(
+        `No se pudo geocodificar el lugar "${lugar}". Intenta con una dirección o coordenadas.`
+      );
+    }
   } else if (calle1) {
     if (calle2) {
-      const point = await geocodeIntersection(calle1, calle2, paradas);
+      const point = await geocodeIntersection(calle1, calle2, paradas, fetchFn);
       if (!point) {
         // Fallback: search paradas where both streets appear (in either role)
         const norm1 = calle1.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x00-\x7f]/g, "").trim();
@@ -137,7 +161,7 @@ export async function buscarParadaHandler(
 
       if (addressMatch) {
         try {
-          const point = await geocodeAddress(addressMatch.calle, addressMatch.numero);
+          const point = await geocodeAddress(addressMatch.calle, addressMatch.numero, fetchFn);
           if (point) {
             centerLat = point.lat;
             centerLon = point.lon;
@@ -165,7 +189,7 @@ export async function buscarParadaHandler(
     }
   } else {
     return textResponse(
-      "Proporciona una dirección (calle1 y opcionalmente calle2) o coordenadas (latitud y longitud)."
+      "Proporciona un lugar (lugar), una dirección (calle1 y opcionalmente calle2) o coordenadas (latitud y longitud)."
     );
   }
 
@@ -202,6 +226,9 @@ export async function buscarParadaHandler(
     lineas: getLineasForParada(p.id, lineasByParada),
   }));
 
+  if (lugarDisplayName) {
+    return textResponse(JSON.stringify({ lugar: lugarDisplayName, paradas: results }, null, 2));
+  }
   return textResponse(JSON.stringify(results, null, 2));
 }
 
@@ -210,10 +237,10 @@ export function registerBuscarParada(server: McpServer, client: CkanClient): voi
     "buscar_parada",
     {
       description:
-        "Busca paradas del STM cercanas a una dirección, intersección o coordenadas en Montevideo. " +
-        "Proporciona calle1+calle2 para una intersección, o latitud+longitud para coordenadas exactas. " +
-        "Si solo se proporciona calle1, acepta nombre de calle con número de puerta opcional (ej: 'Bv España 2529') " +
-        "o realiza búsqueda difusa por nombre de calle.",
+        "Busca paradas del STM cercanas a un lugar en Montevideo. " +
+        "Acepta: nombre de local/comercio/institución (lugar, ej: 'xmartlabs', 'Hospital Maciel'), " +
+        "intersección de calles (calle1+calle2), dirección con número (calle1='Bv España 2529'), " +
+        "nombre de calle con búsqueda difusa (calle1 solo), o coordenadas exactas (latitud+longitud).",
       inputSchema: INPUT_SCHEMA,
     },
     (args) => buscarParadaHandler(args as BuscarParadaArgs, client)

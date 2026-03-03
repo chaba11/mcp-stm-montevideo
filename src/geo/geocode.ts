@@ -1,5 +1,6 @@
 import type { Parada } from "../types/parada.js";
 import { normalizeText } from "./search.js";
+import { getLocalGeocoder } from "./local-geocoder.js";
 
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 const USER_AGENT = "mcp-stm-montevideo/1.0 (github.com/chaba11/mcp-stm-montevideo)";
@@ -10,6 +11,10 @@ const MVD_BBOX = { minLat: -35.1, maxLat: -34.6, minLon: -56.6, maxLon: -55.9 };
 export interface GeoPoint {
   lat: number;
   lon: number;
+}
+
+export interface GeoPlace extends GeoPoint {
+  displayName: string;
 }
 
 export type NominatimResult = Array<{
@@ -213,8 +218,56 @@ export async function geocodeAddress(
 }
 
 /**
+ * Geocode a place or business name using Nominatim (network fallback).
+ */
+async function geocodePlaceFromNominatim(
+  place: string,
+  fetchFn: FetchFn
+): Promise<GeoPlace | null> {
+  const query = `${place}, Montevideo, Uruguay`;
+  const url = `${NOMINATIM_URL}?q=${encodeURIComponent(query)}&format=json&limit=5&countrycodes=uy`;
+
+  const res = await fetchFn(url, {
+    headers: { "User-Agent": USER_AGENT, "Accept-Language": "es" },
+  });
+  if (!res.ok) throw new Error(`Nominatim error: HTTP ${res.status}`);
+
+  const results = (await res.json()) as NominatimResult;
+  if (!results || results.length === 0) return null;
+
+  const mvdResults = results.filter((r) =>
+    isInMontevideo(parseFloat(r.lat), parseFloat(r.lon))
+  );
+  const best = mvdResults.length > 0 ? mvdResults[0] : null;
+  if (!best) return null;
+
+  return {
+    lat: parseFloat(best.lat),
+    lon: parseFloat(best.lon),
+    displayName: best.display_name,
+  };
+}
+
+/**
+ * Geocode a place or business name in Montevideo.
+ * Strategy: 1) LocalGeocoder (offline OSM data), 2) Nominatim (network fallback).
+ * E.g., "xmartlabs", "Hospital Maciel", "Estadio Centenario".
+ */
+export async function geocodePlace(
+  place: string,
+  fetchFn: FetchFn = fetch
+): Promise<GeoPlace | null> {
+  // 1. Try offline OSM data first
+  const local = getLocalGeocoder().searchPlace(place);
+  if (local) return local;
+
+  // 2. Fall back to Nominatim
+  return geocodePlaceFromNominatim(place, fetchFn);
+}
+
+/**
  * Geocode a Montevideo street intersection.
- * Tries paradas first, falls back to Nominatim.
+ * Strategy: 1) paradas data, 2) LocalGeocoder (offline OSM), 3) Nominatim (network).
  */
 export async function geocodeIntersection(
   calle1: string,
@@ -224,8 +277,14 @@ export async function geocodeIntersection(
 ): Promise<GeoPoint | null> {
   if (!calle1.trim()) return null;
 
+  // 1. Try paradas data (fastest, no network)
   const fromParadas = geocodeFromParadas(calle1, calle2, paradas);
   if (fromParadas) return fromParadas;
 
+  // 2. Try local OSM data (offline, handles intersections not in paradas)
+  const fromLocal = getLocalGeocoder().searchIntersection(calle1, calle2);
+  if (fromLocal) return fromLocal;
+
+  // 3. Fall back to Nominatim (network)
   return geocodeFromNominatim(calle1, calle2, fetchFn);
 }
