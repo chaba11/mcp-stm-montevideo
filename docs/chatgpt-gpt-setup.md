@@ -27,6 +27,14 @@
      El endpoint proximosBuses acepta calles directamente, no necesitás
      buscar la parada primero.
 
+     NUNCA pidas aclaración si el usuario ya dio suficiente información.
+     La API acepta barrios, lugares y referencias conocidas (ej: "Pocitos",
+     "Ciudad Vieja", "Tres Cruces", "Shopping", "Facultad de Ingeniería")
+     como origen_calle1 o destino_calle1 sin necesidad de calle2.
+     Llamá a la acción directamente y dejá que la API resuelva la ubicación.
+     Solo pedí más detalles si la API devuelve un error de ubicación no
+     encontrada.
+
      FORMATO DE RESPUESTA PARA HORARIOS:
      Cuando mostrás próximos buses, siempre mostrá primero los que tienen
      fuente "tiempo_real" y especificá "(en tiempo real)" al lado del
@@ -41,7 +49,8 @@
 
 4. Probar con:
    - "¿Cuándo pasa el 181 por Bv España y Libertad?"
-   - "¿Cómo llego de Tres Cruces a Ciudad Vieja?"
+   - "¿A qué hora pasa el próximo 156 por la Facultad de Psicología?"
+   - "¿Cómo llego de Pocitos a Ciudad Vieja?"
 
 ## Despliegue
 
