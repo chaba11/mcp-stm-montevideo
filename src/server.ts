@@ -23,7 +23,7 @@ try {
   // fallback when bundled path differs from source path
 }
 
-export function createServer(client?: CkanClient): McpServer {
+export function createServer(client?: CkanClient): { server: McpServer; client: CkanClient } {
   const server = new McpServer({
     name: "stm-montevideo",
     version: pkgVersion,
@@ -44,5 +44,5 @@ export function createServer(client?: CkanClient): McpServer {
   registerUbicacionBus(server, gps);
   registerComoLlegar(server, ckanClient);
 
-  return server;
+  return { server, client: ckanClient };
 }

@@ -370,7 +370,7 @@ export function createRestApp(
       sessionIdGenerator: undefined, // stateless: no session tracking
       enableJsonResponse: true, // return JSON instead of SSE — required for Claude.ai
     });
-    const mcpServer = createServer(client);
+    const { server: mcpServer } = createServer(client);
     await mcpServer.connect(transport);
     return transport.handleRequest(patchedRequest);
   });

@@ -13,7 +13,7 @@ const TOOL_NAMES = ["buscar_parada", "proximos_buses", "recorrido_linea", "ubica
 
 async function createTestPair(mockCkanClient?: CkanClient) {
   const ckan = mockCkanClient ?? createMockClient();
-  const server = createServer(ckan);
+  const { server } = createServer(ckan);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   const mcpClient = new Client({ name: "test-client", version: "1.0.0" }, { capabilities: {} });

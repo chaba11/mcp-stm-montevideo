@@ -5,6 +5,7 @@ import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import { Cache } from "./cache.js";
 import { parseDbf } from "./dbf-parser.js";
+import { readDiskCache, writeDiskCache } from "./disk-cache.js";
 import { withTimeout } from "./fetch-with-timeout.js";
 import { utm21SToWgs84 } from "./utm-converter.js";
 import type { Parada } from "../types/parada.js";
@@ -14,6 +15,7 @@ import type { LineaVariante } from "../types/linea.js";
 const CKAN_BASE = "https://ckan.montevideo.gub.uy/api/3/action";
 
 const TTL_24H = 24 * 60 * 60 * 1000;
+const DISK_TTL_6M = 180 * 24 * 60 * 60 * 1000; // 6 months — CKAN dataset last updated 2023
 
 // Timeouts
 const METADATA_TIMEOUT_MS = 15_000; // 15s for package_show
@@ -37,6 +39,8 @@ export interface CkanClientOptions {
   fetchFn?: FetchFn;
   /** Skip loading from local JSON files (used in tests with mock fetch) */
   skipLocalFiles?: boolean;
+  /** Skip loading from disk cache (used in tests) */
+  skipDiskCache?: boolean;
 }
 
 interface CkanResource {
@@ -66,15 +70,42 @@ function loadLocalJson<T>(filename: string): T | null {
   return JSON.parse(raw) as T;
 }
 
+/** Convert compact tuple format to HorarioRow objects. Handles both tuple and object formats. */
+function hydrateHorarioTuples(data: unknown[]): HorarioRow[] {
+  if (data.length === 0) return [];
+  if (Array.isArray(data[0])) {
+    return (data as unknown[][]).map((t) => ({
+      tipo_dia: t[0] as number,
+      cod_variante: t[1] as number,
+      frecuencia: t[2] as number,
+      cod_ubic_parada: t[3] as number,
+      ordinal: t[4] as number,
+      hora: t[5] as number,
+      dia_anterior: t[6] as string,
+    } as HorarioRow));
+  }
+  return data as unknown as HorarioRow[];
+}
+
+/** Convert HorarioRow objects to compact tuple format for disk storage. */
+function compactHorarioRows(rows: HorarioRow[]): unknown[][] {
+  return rows.map((r) => [
+    r.tipo_dia, r.cod_variante, r.frecuencia,
+    r.cod_ubic_parada, r.ordinal, r.hora, r.dia_anterior,
+  ]);
+}
+
 export class CkanClient {
   private cache: Cache;
   private fetchFn: FetchFn;
   private skipLocalFiles: boolean;
+  private skipDiskCache: boolean;
 
   constructor(options: CkanClientOptions = {}) {
     this.cache = options.cache ?? new Cache();
     this.fetchFn = options.fetchFn ?? (fetch as FetchFn);
     this.skipLocalFiles = options.skipLocalFiles ?? false;
+    this.skipDiskCache = options.skipDiskCache ?? this.skipLocalFiles;
   }
 
   /**
@@ -217,6 +248,14 @@ export class CkanClient {
       }
     }
 
+    if (!this.skipDiskCache) {
+      const diskData = readDiskCache<Parada[]>("stm-paradas.json", DISK_TTL_6M);
+      if (diskData) {
+        this.cache.set(cacheKey, diskData, TTL_24H);
+        return diskData;
+      }
+    }
+
     const downloadUrl = await this.resolveDownloadUrl(PARADAS_PACKAGE, PARADAS_RESOURCE_PATTERN);
     const dbfBuffer = await this.downloadAndExtract(downloadUrl, /\.dbf$/i);
     const records = parseDbf(dbfBuffer);
@@ -236,6 +275,7 @@ export class CkanClient {
     });
 
     this.cache.set(cacheKey, paradas, TTL_24H);
+    writeDiskCache("stm-paradas.json", paradas);
     return paradas;
   }
 
@@ -251,18 +291,16 @@ export class CkanClient {
     if (!this.skipLocalFiles) {
       const local = loadLocalJson<unknown[]>("stm-horarios.json");
       if (local) {
-        // Compact tuple format: [tipo_dia, cod_variante, frecuencia, cod_ubic_parada, ordinal, hora, dia_anterior]
-        const rows: HorarioRow[] = Array.isArray(local[0])
-          ? (local as unknown[][]).map((t) => ({
-              tipo_dia: t[0] as number,
-              cod_variante: t[1] as number,
-              frecuencia: t[2] as number,
-              cod_ubic_parada: t[3] as number,
-              ordinal: t[4] as number,
-              hora: t[5] as number,
-              dia_anterior: t[6] as string,
-            } as HorarioRow))
-          : local as unknown as HorarioRow[];
+        const rows = hydrateHorarioTuples(local);
+        this.cache.set(cacheKey, rows, TTL_24H);
+        return rows;
+      }
+    }
+
+    if (!this.skipDiskCache) {
+      const diskData = readDiskCache<unknown[]>("stm-horarios.json", DISK_TTL_6M);
+      if (diskData) {
+        const rows = hydrateHorarioTuples(diskData);
         this.cache.set(cacheKey, rows, TTL_24H);
         return rows;
       }
@@ -284,6 +322,7 @@ export class CkanClient {
     }) as HorarioRow[];
 
     this.cache.set(cacheKey, rows, TTL_24H);
+    writeDiskCache("stm-horarios.json", compactHorarioRows(rows));
     return rows;
   }
 
@@ -301,6 +340,14 @@ export class CkanClient {
       if (local) {
         this.cache.set(cacheKey, local, TTL_24H);
         return local;
+      }
+    }
+
+    if (!this.skipDiskCache) {
+      const diskData = readDiskCache<LineaVariante[]>("stm-lineas.json", DISK_TTL_6M);
+      if (diskData) {
+        this.cache.set(cacheKey, diskData, TTL_24H);
+        return diskData;
       }
     }
 
@@ -324,6 +371,7 @@ export class CkanClient {
     }));
 
     this.cache.set(cacheKey, lineas, TTL_24H);
+    writeDiskCache("stm-lineas.json", lineas);
     return lineas;
   }
 
