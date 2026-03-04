@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>mcp-stm-montevideo — Montevideo's transit system, accessible to AI</title>
+<title>mcp-stm-montevideo</title>
 <meta name="description" content="MCP server for Montevideo's Metropolitan Transit System (STM). Let LLMs answer questions about bus schedules, routes, and stops in real time.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚌</text></svg>">
 <style>
@@ -15,13 +15,14 @@
     --bg: #0a0a0f;
     --bg-raised: #12121a;
     --bg-card: #18182a;
-    --amber: #f5a623;
-    --amber-dim: #c47d12;
-    --amber-glow: rgba(245, 166, 35, 0.15);
-    --cyan: #3ecfcf;
+    --primary: #044c7e;
+    --primary-light: #0a6bab;
+    --primary-glow: rgba(4, 76, 126, 0.2);
+    --accent: #2a8fd4;
     --magenta: #e84393;
     --text: #e8e6e3;
     --text-dim: #8a8a9a;
+    --footer-bg: #383736;
     --mono: 'JetBrains Mono', monospace;
     --display: 'Space Grotesk', sans-serif;
     --line-weight: 4px;
@@ -40,12 +41,54 @@
   /* ---- Transit line decorative elements ---- */
   .transit-line {
     position: absolute;
-    background: var(--amber);
+    background: var(--primary);
     border-radius: 2px;
     opacity: 0.12;
   }
   .transit-line.vertical { width: var(--line-weight); }
   .transit-line.horizontal { height: var(--line-weight); }
+
+  /* ---- Language switcher ---- */
+  .lang-switcher {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 100;
+    display: flex;
+    background: var(--bg-card);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 100px;
+    padding: 3px;
+    gap: 2px;
+  }
+  .lang-btn {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 5px 12px;
+    border: none;
+    border-radius: 100px;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: transparent;
+    color: var(--text-dim);
+  }
+  .lang-btn.active {
+    background: var(--primary);
+    color: #fff;
+  }
+  .lang-btn:not(.active):hover {
+    color: var(--text);
+  }
+
+  /* ---- Bilingual show/hide ---- */
+  .lang-en, .lang-es { display: none; }
+  html[lang="en"] .lang-en { display: inline; }
+  html[lang="es"] .lang-es { display: inline; }
+  /* Block-level variants */
+  p.lang-en, p.lang-es, div.lang-en, div.lang-es { display: none; }
+  html[lang="en"] p.lang-en, html[lang="en"] div.lang-en { display: block; }
+  html[lang="es"] p.lang-es, html[lang="es"] div.lang-es { display: block; }
 
   /* ---- Layout ---- */
   .container {
@@ -76,7 +119,7 @@
     right: -200px;
     width: 600px;
     height: 600px;
-    background: radial-gradient(circle, var(--amber-glow) 0%, transparent 70%);
+    background: radial-gradient(circle, var(--primary-glow) 0%, transparent 70%);
     pointer-events: none;
   }
 
@@ -87,17 +130,17 @@
     align-items: center;
     gap: 8px;
     background: var(--bg-raised);
-    border: 1px solid rgba(245, 166, 35, 0.2);
+    border: 1px solid rgba(4, 76, 126, 0.3);
     border-radius: 100px;
     padding: 6px 16px;
     font-family: var(--mono);
     font-size: 13px;
-    color: var(--amber);
+    color: var(--accent);
     margin-bottom: 32px;
   }
   .hero-badge .dot {
     width: 8px; height: 8px;
-    background: var(--amber);
+    background: var(--accent);
     border-radius: 50%;
     animation: pulse 2s infinite;
   }
@@ -114,7 +157,7 @@
     margin-bottom: 8px;
   }
   .hero h1 .accent {
-    color: var(--amber);
+    color: var(--accent);
     position: relative;
   }
   .hero h1 .accent::after {
@@ -124,7 +167,7 @@
     left: 0;
     width: 100%;
     height: var(--line-weight);
-    background: var(--amber);
+    background: var(--primary);
     border-radius: 2px;
   }
 
@@ -182,13 +225,13 @@
     cursor: pointer;
   }
   .btn-primary {
-    background: var(--amber);
-    color: #0a0a0f;
+    background: var(--primary);
+    color: #fff;
   }
   .btn-primary:hover {
-    background: #ffb940;
+    background: var(--primary-light);
     transform: translateY(-1px);
-    box-shadow: 0 4px 20px var(--amber-glow);
+    box-shadow: 0 4px 20px var(--primary-glow);
   }
   .btn-secondary {
     background: var(--bg-raised);
@@ -205,7 +248,7 @@
   .section-label {
     font-family: var(--mono);
     font-size: 12px;
-    color: var(--amber);
+    color: var(--accent);
     text-transform: uppercase;
     letter-spacing: 2px;
     margin-bottom: 16px;
@@ -220,6 +263,10 @@
     font-size: 1.05rem;
     max-width: 600px;
     margin-bottom: 48px;
+  }
+  .section-desc a {
+    color: var(--accent);
+    text-decoration: underline;
   }
 
   /* ---- Tools / Transit Line ---- */
@@ -236,7 +283,7 @@
     top: 0;
     bottom: 0;
     width: var(--line-weight);
-    background: linear-gradient(to bottom, var(--amber), var(--cyan));
+    background: linear-gradient(to bottom, var(--primary), var(--accent));
     border-radius: 2px;
   }
 
@@ -252,24 +299,22 @@
     width: 18px;
     height: 18px;
     background: var(--bg);
-    border: var(--line-weight) solid var(--amber);
+    border: var(--line-weight) solid var(--primary);
     border-radius: 50%;
     z-index: 1;
   }
-  .tool-stop:nth-child(2)::before { border-color: #e6a320; }
-  .tool-stop:nth-child(3)::before { border-color: #c4902a; }
-  .tool-stop:nth-child(4)::before { border-color: #6abfbf; }
-  .tool-stop:nth-child(5)::before { border-color: var(--cyan); }
+  .tool-stop:nth-child(2)::before { border-color: #045d96; }
+  .tool-stop:nth-child(3)::before { border-color: #0a6bab; }
+  .tool-stop:nth-child(4)::before { border-color: #1a7dc0; }
+  .tool-stop:nth-child(5)::before { border-color: var(--accent); }
 
   .tool-stop .tool-name {
     font-family: var(--mono);
     font-size: 1.05rem;
     font-weight: 700;
-    color: var(--amber);
+    color: var(--accent);
     margin-bottom: 4px;
   }
-  .tool-stop:nth-child(4) .tool-name,
-  .tool-stop:nth-child(5) .tool-name { color: var(--cyan); }
 
   .tool-stop .tool-desc {
     color: var(--text-dim);
@@ -292,7 +337,7 @@
   .install-oneliner code {
     font-family: var(--mono);
     font-size: 1.05rem;
-    color: var(--amber);
+    color: var(--accent);
   }
   .install-oneliner .prefix {
     color: var(--text-dim);
@@ -312,8 +357,8 @@
     white-space: nowrap;
   }
   .copy-btn:hover {
-    border-color: var(--amber);
-    color: var(--amber);
+    border-color: var(--accent);
+    color: var(--accent);
   }
   .copy-btn.copied {
     border-color: #4caf50;
@@ -342,7 +387,7 @@
   .config-tab:hover { color: var(--text); }
   .config-tab.active {
     background: var(--bg-card);
-    color: var(--amber);
+    color: var(--accent);
     border-color: rgba(255,255,255,0.06);
   }
 
@@ -372,8 +417,8 @@
     line-height: 1.7;
     overflow-x: auto;
   }
-  pre .key { color: var(--cyan); }
-  pre .string { color: var(--amber); }
+  pre .key { color: var(--accent); }
+  pre .string { color: #5eb3e4; }
   pre .punct { color: var(--text-dim); }
 
   .config-panel .copy-btn {
@@ -397,8 +442,8 @@
     border-radius: 12px 12px 12px 4px;
   }
   .msg-ai {
-    background: rgba(245, 166, 35, 0.05);
-    border: 1px solid rgba(245, 166, 35, 0.1);
+    background: rgba(4, 76, 126, 0.08);
+    border: 1px solid rgba(4, 76, 126, 0.15);
     border-radius: 12px 12px 4px 12px;
   }
   .msg-label {
@@ -409,13 +454,13 @@
     margin-bottom: 8px;
   }
   .msg-user .msg-label { color: var(--text-dim); }
-  .msg-ai .msg-label { color: var(--amber); }
+  .msg-ai .msg-label { color: var(--accent); }
   .msg p { font-size: 0.95rem; }
   .msg .tool-call {
     font-family: var(--mono);
     font-size: 12px;
-    color: var(--cyan);
-    background: rgba(62, 207, 207, 0.08);
+    color: var(--accent);
+    background: rgba(42, 143, 212, 0.08);
     padding: 8px 12px;
     border-radius: 6px;
     margin: 8px 0;
@@ -424,7 +469,7 @@
 
   /* ---- Footer ---- */
   footer {
-    border-top: 1px solid rgba(255,255,255,0.06);
+    background: var(--footer-bg);
     padding: 40px 0;
   }
   .footer-inner {
@@ -442,15 +487,15 @@
   .footer-links a {
     font-family: var(--mono);
     font-size: 13px;
-    color: var(--text-dim);
+    color: rgba(255,255,255,0.6);
     text-decoration: none;
     transition: color 0.2s;
   }
-  .footer-links a:hover { color: var(--amber); }
+  .footer-links a:hover { color: #fff; }
   .footer-meta {
     font-family: var(--mono);
     font-size: 13px;
-    color: var(--text-dim);
+    color: rgba(255,255,255,0.6);
   }
 
   /* ---- Responsive ---- */
@@ -467,6 +512,12 @@
 </head>
 <body>
 
+<!-- ===== LANGUAGE SWITCHER ===== -->
+<div class="lang-switcher">
+  <button class="lang-btn" data-lang="en" onclick="setLang('en')">EN</button>
+  <button class="lang-btn" data-lang="es" onclick="setLang('es')">ES</button>
+</div>
+
 <!-- ===== HERO ===== -->
 <section class="hero">
   <div class="container hero-content">
@@ -480,20 +531,27 @@
       montevideo
     </h1>
 
-    <p class="tagline">Montevideo's transit system, accessible to AI</p>
+    <p class="tagline">
+      <span class="lang-en">Montevideo's transit system, accessible to AI</span>
+      <span class="lang-es">El transporte de Montevideo, accesible para la IA</span>
+    </p>
 
     <div class="chat-bubble">
       <p>"¿Cuándo pasa el próximo 181 por Bv España y Libertad?"</p>
     </div>
 
     <div class="cta-group">
-      <a href="#install" class="btn btn-primary">Get Started</a>
+      <a href="#install" class="btn btn-primary">
+        <span class="lang-en">Get Started</span>
+        <span class="lang-es">Comenzar</span>
+      </a>
       <a href="https://github.com/chaba11/mcp-stm-montevideo" target="_blank" rel="noopener" class="btn btn-secondary">
         <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
         GitHub
       </a>
       <a href="https://chatgpt.com/g/g-69a70f5dc0288191a929b39ba8506973-stm-montevideo" target="_blank" rel="noopener" class="btn btn-secondary">
-        Try on ChatGPT
+        <span class="lang-en">Try on ChatGPT</span>
+        <span class="lang-es">Probar en ChatGPT</span>
       </a>
     </div>
   </div>
@@ -502,32 +560,56 @@
 <!-- ===== WHAT IT DOES ===== -->
 <section class="tools-section">
   <div class="container">
-    <div class="section-label">What It Does</div>
-    <h2 class="section-title">5 tools for Montevideo transit</h2>
-    <p class="section-desc">
-      An <a href="https://modelcontextprotocol.io" target="_blank" rel="noopener" style="color:var(--amber);text-decoration:underline">MCP</a> server that gives AI assistants access to Montevideo's public transit data &mdash; schedules, routes, stops, and real-time positions from the STM open data portal.
+    <div class="section-label">
+      <span class="lang-en">What It Does</span>
+      <span class="lang-es">Qué hace</span>
+    </div>
+    <h2 class="section-title">
+      <span class="lang-en">5 tools for Montevideo transit</span>
+      <span class="lang-es">5 herramientas para el transporte de Montevideo</span>
+    </h2>
+    <p class="section-desc lang-en">
+      An <a href="https://modelcontextprotocol.io" target="_blank" rel="noopener">MCP</a> server that gives AI assistants access to Montevideo's public transit data &mdash; schedules, routes, stops, and real-time positions from the STM open data portal.
+    </p>
+    <p class="section-desc lang-es">
+      Un servidor <a href="https://modelcontextprotocol.io" target="_blank" rel="noopener">MCP</a> que da a los asistentes de IA acceso a los datos del transporte público de Montevideo &mdash; horarios, recorridos, paradas y posiciones en tiempo real del portal de datos abiertos del STM.
     </p>
 
     <div class="transit-route">
       <div class="tool-stop">
         <div class="tool-name">buscar_parada</div>
-        <div class="tool-desc">Search stops by location, intersection, or coordinates</div>
+        <div class="tool-desc">
+          <span class="lang-en">Search stops by location, intersection, or coordinates</span>
+          <span class="lang-es">Buscar paradas por ubicación, intersección o coordenadas</span>
+        </div>
       </div>
       <div class="tool-stop">
         <div class="tool-name">proximos_buses</div>
-        <div class="tool-desc">Next buses arriving at a stop</div>
+        <div class="tool-desc">
+          <span class="lang-en">Next buses arriving at a stop</span>
+          <span class="lang-es">Próximos ómnibus en llegar a una parada</span>
+        </div>
       </div>
       <div class="tool-stop">
         <div class="tool-name">recorrido_linea</div>
-        <div class="tool-desc">Full route of a bus line with all its stops</div>
+        <div class="tool-desc">
+          <span class="lang-en">Full route of a bus line with all its stops</span>
+          <span class="lang-es">Recorrido completo de una línea con todas sus paradas</span>
+        </div>
       </div>
       <div class="tool-stop">
         <div class="tool-name">ubicacion_bus</div>
-        <div class="tool-desc">Real-time bus position (when available)</div>
+        <div class="tool-desc">
+          <span class="lang-en">Real-time bus position (when available)</span>
+          <span class="lang-es">Posición del ómnibus en tiempo real (cuando está disponible)</span>
+        </div>
       </div>
       <div class="tool-stop">
         <div class="tool-name">como_llegar</div>
-        <div class="tool-desc">Route planning from A to B by public transit</div>
+        <div class="tool-desc">
+          <span class="lang-en">Route planning from A to B by public transit</span>
+          <span class="lang-es">Planificación de ruta de A a B en transporte público</span>
+        </div>
       </div>
     </div>
   </div>
@@ -536,13 +618,23 @@
 <!-- ===== INSTALLATION ===== -->
 <section id="install">
   <div class="container">
-    <div class="section-label">Installation</div>
-    <h2 class="section-title">One command, zero config</h2>
-    <p class="section-desc">Run it directly with npx. Data downloads automatically from Montevideo's open data portal and caches in memory.</p>
+    <div class="section-label">
+      <span class="lang-en">Installation</span>
+      <span class="lang-es">Instalación</span>
+    </div>
+    <h2 class="section-title">
+      <span class="lang-en">One command, zero config</span>
+      <span class="lang-es">Un comando, cero configuración</span>
+    </h2>
+    <p class="section-desc lang-en">Run it directly with npx. Data downloads automatically from Montevideo's open data portal and caches in memory.</p>
+    <p class="section-desc lang-es">Ejecutalo directamente con npx. Los datos se descargan automáticamente del portal de datos abiertos de Montevideo y se cachean en memoria.</p>
 
     <div class="install-oneliner">
       <code><span class="prefix">$</span> npx mcp-stm-montevideo</code>
-      <button class="copy-btn" data-copy="npx mcp-stm-montevideo">Copy</button>
+      <button class="copy-btn" data-copy="npx mcp-stm-montevideo">
+        <span class="lang-en">Copy</span>
+        <span class="lang-es">Copiar</span>
+      </button>
     </div>
 
     <div class="config-tabs">
@@ -561,7 +653,10 @@
       "args": ["-y", "mcp-stm-montevideo"]
     }
   }
-}'>Copy</button>
+}'>
+          <span class="lang-en">Copy</span>
+          <span class="lang-es">Copiar</span>
+        </button>
         <pre><code><span class="punct">{</span>
   <span class="key">"mcpServers"</span><span class="punct">:</span> <span class="punct">{</span>
     <span class="key">"stm-montevideo"</span><span class="punct">:</span> <span class="punct">{</span>
@@ -581,7 +676,10 @@
       "args": ["-y", "mcp-stm-montevideo"]
     }
   }
-}'>Copy</button>
+}'>
+          <span class="lang-en">Copy</span>
+          <span class="lang-es">Copiar</span>
+        </button>
         <pre><code><span class="punct">{</span>
   <span class="key">"mcpServers"</span><span class="punct">:</span> <span class="punct">{</span>
     <span class="key">"stm-montevideo"</span><span class="punct">:</span> <span class="punct">{</span>
@@ -601,7 +699,10 @@
       "args": ["-y", "mcp-stm-montevideo"]
     }
   }
-}'>Copy</button>
+}'>
+          <span class="lang-en">Copy</span>
+          <span class="lang-es">Copiar</span>
+        </button>
         <pre><code><span class="punct">{</span>
   <span class="key">"mcpServers"</span><span class="punct">:</span> <span class="punct">{</span>
     <span class="key">"stm-montevideo"</span><span class="punct">:</span> <span class="punct">{</span>
@@ -618,9 +719,16 @@
 <!-- ===== EXAMPLE ===== -->
 <section style="background:var(--bg-raised);">
   <div class="container">
-    <div class="section-label">Example</div>
-    <h2 class="section-title">See it in action</h2>
-    <p class="section-desc">A realistic conversation between a user and an AI assistant using the STM tools.</p>
+    <div class="section-label">
+      <span class="lang-en">Example</span>
+      <span class="lang-es">Ejemplo</span>
+    </div>
+    <h2 class="section-title">
+      <span class="lang-en">See it in action</span>
+      <span class="lang-es">Miralo en acción</span>
+    </h2>
+    <p class="section-desc lang-en">A realistic conversation between a user and an AI assistant using the STM tools.</p>
+    <p class="section-desc lang-es">Una conversación realista entre un usuario y un asistente de IA usando las herramientas STM.</p>
 
     <div class="conversation">
       <div class="msg msg-user">
@@ -658,30 +766,75 @@
       <a href="https://chatgpt.com/g/g-69a70f5dc0288191a929b39ba8506973-stm-montevideo" target="_blank" rel="noopener">ChatGPT GPT</a>
     </div>
     <div class="footer-meta">
-      MIT License · Made in Montevideo 🇺🇾
+      <span class="lang-en">MIT License · Made in Montevideo 🇺🇾</span>
+      <span class="lang-es">Licencia MIT · Hecho en Montevideo 🇺🇾</span>
     </div>
   </div>
 </footer>
 
 <script>
-  // Tab switching
-  document.querySelectorAll('.config-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.config-tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.config-panel').forEach(p => p.classList.remove('active'));
+  // ---- Bilingual support ----
+  function setLang(lang) {
+    document.documentElement.lang = lang;
+    localStorage.setItem('lang', lang);
+
+    // Update switcher buttons
+    document.querySelectorAll('.lang-btn').forEach(function(btn) {
+      btn.classList.toggle('active', btn.dataset.lang === lang);
+    });
+
+    // Update page title
+    document.title = lang === 'es'
+      ? 'mcp-stm-montevideo — El transporte de Montevideo, accesible para la IA'
+      : "mcp-stm-montevideo — Montevideo's transit system, accessible to AI";
+
+    // Update meta description
+    var meta = document.querySelector('meta[name="description"]');
+    if (meta) {
+      meta.content = lang === 'es'
+        ? 'Servidor MCP para el Sistema de Transporte Metropolitano (STM) de Montevideo. Permite que los LLMs respondan preguntas sobre horarios, recorridos y paradas de ómnibus en tiempo real.'
+        : "MCP server for Montevideo's Metropolitan Transit System (STM). Let LLMs answer questions about bus schedules, routes, and stops in real time.";
+    }
+  }
+
+  // Detect language: localStorage > navigator.language > default 'en'
+  (function() {
+    var saved = localStorage.getItem('lang');
+    if (saved) {
+      setLang(saved);
+    } else {
+      var browserLang = (navigator.language || 'en').toLowerCase();
+      setLang(browserLang.startsWith('es') ? 'es' : 'en');
+    }
+  })();
+
+  // ---- Tab switching ----
+  document.querySelectorAll('.config-tab').forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      document.querySelectorAll('.config-tab').forEach(function(t) { t.classList.remove('active'); });
+      document.querySelectorAll('.config-panel').forEach(function(p) { p.classList.remove('active'); });
       tab.classList.add('active');
       document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
     });
   });
 
-  // Copy to clipboard
-  document.querySelectorAll('.copy-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      navigator.clipboard.writeText(btn.dataset.copy).then(() => {
-        btn.textContent = 'Copied!';
+  // ---- Copy to clipboard ----
+  document.querySelectorAll('.copy-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var lang = document.documentElement.lang || 'en';
+      navigator.clipboard.writeText(btn.dataset.copy).then(function() {
+        var enSpan = btn.querySelector('.lang-en');
+        var esSpan = btn.querySelector('.lang-es');
+        if (enSpan && esSpan) {
+          enSpan.textContent = 'Copied!';
+          esSpan.textContent = '¡Copiado!';
+        }
         btn.classList.add('copied');
-        setTimeout(() => {
-          btn.textContent = 'Copy';
+        setTimeout(function() {
+          if (enSpan && esSpan) {
+            enSpan.textContent = 'Copy';
+            esSpan.textContent = 'Copiar';
+          }
           btn.classList.remove('copied');
         }, 2000);
       });
