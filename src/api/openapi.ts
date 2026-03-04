@@ -80,13 +80,18 @@ function buildSpec() {
         get: {
           operationId: "proximosBuses",
           summary: "Próximos buses en una parada",
-          description: "Consulta los próximos ómnibus que pasan por una parada del STM.",
+          description:
+            "Consulta los próximos ómnibus que pasan por una parada del STM. " +
+            "Podés identificar la parada de tres formas: por parada_id, por calle1+calle2 (intersección), " +
+            "o por calle1 sola. IMPORTANTE: no necesitás llamar a buscarParadas primero — " +
+            "pasá calle1 y calle2 directamente y este endpoint busca la parada automáticamente. " +
+            "Usá este endpoint directamente cuando el usuario pregunte cuándo pasa un bus.",
           parameters: [
-            { name: "parada_id", in: "query", schema: { type: "integer" }, description: "ID de la parada (obtenido de buscar)", example: 1234 },
-            { name: "calle1", in: "query", schema: { type: "string" }, description: "Calle para buscar parada automáticamente" },
-            { name: "calle2", in: "query", schema: { type: "string" }, description: "Calle de intersección" },
-            { name: "linea", in: "query", schema: { type: "string" }, description: "Filtrar por número de línea", example: "181" },
-            { name: "cantidad", in: "query", schema: { type: "integer", default: 5 }, description: "Cantidad de próximos buses", example: 5 },
+            { name: "parada_id", in: "query", schema: { type: "integer" }, description: "ID de la parada (opcional — si no lo tenés, usá calle1+calle2)", example: 1234 },
+            { name: "calle1", in: "query", schema: { type: "string" }, description: "Calle principal o avenida (ej: 'Bv España'). Alternativa a parada_id — busca la parada automáticamente.", example: "Bv España" },
+            { name: "calle2", in: "query", schema: { type: "string" }, description: "Calle de intersección (ej: 'Libertad'). Usar junto con calle1 para mayor precisión.", example: "Libertad" },
+            { name: "linea", in: "query", schema: { type: "string" }, description: "Filtrar por número de línea (ej: '181')", example: "181" },
+            { name: "cantidad", in: "query", schema: { type: "integer", default: 5 }, description: "Cantidad de próximos buses a devolver", example: 5 },
           ],
           responses: {
             "200": {
