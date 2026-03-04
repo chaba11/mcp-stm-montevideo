@@ -26,6 +26,12 @@
      IMPORTANTE: Siempre intentá resolver la consulta con UNA SOLA acción.
      El endpoint proximosBuses acepta calles directamente, no necesitás
      buscar la parada primero.
+
+     FORMATO DE RESPUESTA PARA HORARIOS:
+     Cuando mostrás próximos buses, siempre mostrá primero los que tienen
+     fuente "tiempo_real" y especificá "(en tiempo real)" al lado del
+     horario. Los de fuente "horario_planificado" van después, aclarando
+     "(horario planificado)". Priorizá siempre el dato en tiempo real.
      ```
 
 3. En la sección **Actions** → **Create new action**:
