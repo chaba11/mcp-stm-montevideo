@@ -18,6 +18,7 @@ import { generateLargeNetwork } from "../fixtures/network-data.js";
 function makeErrorClient(status: number): CkanClient {
   const client = new CkanClient({
     cache: new Cache(),
+    skipLocalFiles: true,
     fetchFn: async () => ({
       ok: false,
       status,
@@ -33,6 +34,7 @@ function makeHtmlClient(): CkanClient {
   const htmlBody = "<html><body>Service Unavailable</body></html>";
   return new CkanClient({
     cache: new Cache(),
+    skipLocalFiles: true,
     fetchFn: async () => ({
       ok: true,
       status: 200,

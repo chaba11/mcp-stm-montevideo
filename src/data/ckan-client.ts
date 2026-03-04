@@ -35,6 +35,8 @@ export type FetchFn = (url: string) => Promise<{ ok: boolean; status: number; ar
 export interface CkanClientOptions {
   cache?: Cache;
   fetchFn?: FetchFn;
+  /** Skip loading from local JSON files (used in tests with mock fetch) */
+  skipLocalFiles?: boolean;
 }
 
 interface CkanResource {
@@ -67,10 +69,12 @@ function loadLocalJson<T>(filename: string): T | null {
 export class CkanClient {
   private cache: Cache;
   private fetchFn: FetchFn;
+  private skipLocalFiles: boolean;
 
   constructor(options: CkanClientOptions = {}) {
     this.cache = options.cache ?? new Cache();
     this.fetchFn = options.fetchFn ?? (fetch as FetchFn);
+    this.skipLocalFiles = options.skipLocalFiles ?? false;
   }
 
   /**
@@ -205,10 +209,12 @@ export class CkanClient {
     const cached = this.cache.get<Parada[]>(cacheKey);
     if (cached) return cached;
 
-    const local = loadLocalJson<Parada[]>("stm-paradas.json");
-    if (local) {
-      this.cache.set(cacheKey, local, TTL_24H);
-      return local;
+    if (!this.skipLocalFiles) {
+      const local = loadLocalJson<Parada[]>("stm-paradas.json");
+      if (local) {
+        this.cache.set(cacheKey, local, TTL_24H);
+        return local;
+      }
     }
 
     const downloadUrl = await this.resolveDownloadUrl(PARADAS_PACKAGE, PARADAS_RESOURCE_PATTERN);
@@ -242,10 +248,24 @@ export class CkanClient {
     const cached = this.cache.get<HorarioRow[]>(cacheKey);
     if (cached) return cached;
 
-    const local = loadLocalJson<HorarioRow[]>("stm-horarios.json");
-    if (local) {
-      this.cache.set(cacheKey, local, TTL_24H);
-      return local;
+    if (!this.skipLocalFiles) {
+      const local = loadLocalJson<unknown[]>("stm-horarios.json");
+      if (local) {
+        // Compact tuple format: [tipo_dia, cod_variante, frecuencia, cod_ubic_parada, ordinal, hora, dia_anterior]
+        const rows: HorarioRow[] = Array.isArray(local[0])
+          ? (local as unknown[][]).map((t) => ({
+              tipo_dia: t[0] as number,
+              cod_variante: t[1] as number,
+              frecuencia: t[2] as number,
+              cod_ubic_parada: t[3] as number,
+              ordinal: t[4] as number,
+              hora: t[5] as number,
+              dia_anterior: t[6] as string,
+            } as HorarioRow))
+          : local as unknown as HorarioRow[];
+        this.cache.set(cacheKey, rows, TTL_24H);
+        return rows;
+      }
     }
 
     const downloadUrl = await this.resolveDownloadUrl(HORARIOS_PACKAGE, HORARIOS_RESOURCE_PATTERN);
@@ -276,10 +296,12 @@ export class CkanClient {
     const cached = this.cache.get<LineaVariante[]>(cacheKey);
     if (cached) return cached;
 
-    const local = loadLocalJson<LineaVariante[]>("stm-lineas.json");
-    if (local) {
-      this.cache.set(cacheKey, local, TTL_24H);
-      return local;
+    if (!this.skipLocalFiles) {
+      const local = loadLocalJson<LineaVariante[]>("stm-lineas.json");
+      if (local) {
+        this.cache.set(cacheKey, local, TTL_24H);
+        return local;
+      }
     }
 
     const downloadUrl = await this.resolveDownloadUrl(LINEAS_PACKAGE, LINEAS_RESOURCE_PATTERN);

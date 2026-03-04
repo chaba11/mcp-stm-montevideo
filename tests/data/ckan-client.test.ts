@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { readFileSync, writeFileSync, unlinkSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, unlinkSync, existsSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CkanClient } from "../../src/data/ckan-client.js";
@@ -51,7 +51,7 @@ describe("CkanClient", () => {
     it("returns resources for a valid package", async () => {
       const resources = [{ id: "abc", name: "Test", format: "CSV", url: "http://example.com/test.csv" }];
       const fetchFn = composeFetch(mockCkanResponse("some-package", resources));
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
 
       const result = await client.getPackageResources("some-package");
       expect(result).toEqual(resources);
@@ -64,7 +64,7 @@ describe("CkanClient", () => {
         fetchCount++;
         return mockAnyPackageResponse(resources)(url);
       });
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
 
       await client.getPackageResources("pkg");
       await client.getPackageResources("pkg");
@@ -73,13 +73,13 @@ describe("CkanClient", () => {
 
     it("throws on HTTP 404", async () => {
       const fetchFn = composeFetch(mockNotFound("package_show"));
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
       await expect(client.getPackageResources("bad-package")).rejects.toThrow("HTTP 404");
     });
 
     it("throws on HTTP 500", async () => {
       const fetchFn = composeFetch(mockServerError("package_show"));
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
       await expect(client.getPackageResources("pkg")).rejects.toThrow("HTTP 500");
     });
 
@@ -93,13 +93,13 @@ describe("CkanClient", () => {
           async text() { return body; },
         };
       });
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
       await expect(client.getPackageResources("bad")).rejects.toThrow("success=false");
     });
 
     it("throws on network error", async () => {
       const fetchFn = composeFetch(mockNetworkError("package_show"));
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
       await expect(client.getPackageResources("pkg")).rejects.toThrow("Network error");
     });
   });
@@ -113,7 +113,7 @@ describe("CkanClient", () => {
         mockAnyPackageResponse(FAKE_HORARIOS_RESOURCE),
         mockBinaryDownload("uptu_pasada_variante.zip", horarioZip)
       );
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
 
       const horarios = await client.getHorarios();
       expect(horarios.length).toBeGreaterThan(0);
@@ -132,7 +132,7 @@ describe("CkanClient", () => {
         mockAnyPackageResponse(FAKE_HORARIOS_RESOURCE),
         mockBinaryDownload("uptu_pasada_variante.zip", horarioZip)
       );
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
 
       const horarios = await client.getHorarios();
       expect(horarios.some((h) => h.dia_anterior === "S")).toBe(true);
@@ -150,7 +150,7 @@ describe("CkanClient", () => {
           return mockBinaryDownload("uptu_pasada_variante.zip", horarioZip)(url);
         }
       );
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
 
       await client.getHorarios();
       await client.getHorarios();
@@ -162,7 +162,7 @@ describe("CkanClient", () => {
         mockAnyPackageResponse(FAKE_HORARIOS_RESOURCE),
         mockServerError("uptu_pasada_variante.zip")
       );
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
       await expect(client.getHorarios()).rejects.toThrow("HTTP 500");
     });
 
@@ -172,7 +172,7 @@ describe("CkanClient", () => {
         mockAnyPackageResponse(FAKE_HORARIOS_RESOURCE),
         mockBinaryDownload("uptu_pasada_variante.zip", horarioZip)
       );
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
 
       const horarios = await client.getHorarios();
       expect(horarios.some((h) => h.tipo_dia === 2)).toBe(true); // Saturday
@@ -185,7 +185,7 @@ describe("CkanClient", () => {
         mockAnyPackageResponse(FAKE_HORARIOS_RESOURCE),
         mockBinaryDownload("uptu_pasada_variante.zip", bomZip)
       );
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
 
       // Should not throw, should return at least one row
       const horarios = await client.getHorarios();
@@ -198,7 +198,7 @@ describe("CkanClient", () => {
         mockAnyPackageResponse(FAKE_HORARIOS_RESOURCE),
         mockBinaryDownload("uptu_pasada_variante.zip", emptyZip)
       );
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
 
       const horarios = await client.getHorarios();
       expect(horarios).toEqual([]);
@@ -210,7 +210,7 @@ describe("CkanClient", () => {
         mockAnyPackageResponse(FAKE_HORARIOS_RESOURCE),
         mockBinaryDownload("uptu_pasada_variante.zip", horarioZip)
       );
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
 
       const horarios = await client.getHorarios();
       for (const h of horarios) {
@@ -232,7 +232,7 @@ describe("CkanClient", () => {
         mockGenerarZipResponse("nom_tab=v_uptu_paradas", "/sit/tmp/v_uptu_paradas.zip"),
         mockBinaryDownload("v_uptu_paradas.zip", paradasZip)
       );
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
 
       const paradas = await client.getParadas();
       expect(paradas.length).toBeGreaterThan(0);
@@ -254,7 +254,7 @@ describe("CkanClient", () => {
         mockGenerarZipResponse("nom_tab=v_uptu_paradas", "/sit/tmp/v_uptu_paradas.zip"),
         mockBinaryDownload("v_uptu_paradas.zip", paradasZip)
       );
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
 
       const paradas = await client.getParadas();
       const coruña = paradas.find((p) => p.calle.includes("CORU"));
@@ -269,7 +269,7 @@ describe("CkanClient", () => {
         mockGenerarZipResponse("nom_tab=v_uptu_paradas", "/sit/tmp/v_uptu_paradas.zip"),
         mockBinaryDownload("v_uptu_paradas.zip", paradasZip)
       );
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
 
       const paradas = await client.getParadas();
       for (const p of paradas) {
@@ -294,7 +294,7 @@ describe("CkanClient", () => {
         mockGenerarZipResponse("nom_tab=v_uptu_lsv_destinos", "/sit/tmp/v_uptu_lsv_destinos.zip"),
         mockBinaryDownload("v_uptu_lsv_destinos.zip", lineasZip)
       );
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
 
       const lineas = await client.getLineas();
       expect(lineas.length).toBeGreaterThan(0);
@@ -312,7 +312,7 @@ describe("CkanClient", () => {
         mockGenerarZipResponse("nom_tab=v_uptu_lsv_destinos", "/sit/tmp/v_uptu_lsv_destinos.zip"),
         mockBinaryDownload("v_uptu_lsv_destinos.zip", lineasZip)
       );
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
 
       const lineas = await client.getLineas();
       for (const l of lineas) {
@@ -334,7 +334,7 @@ describe("CkanClient", () => {
         mockGenerarZipResponse("nom_tab=v_uptu_lsv_destinos", "/sit/tmp/v_uptu_lsv_destinos.zip"),
         mockBinaryDownload("v_uptu_lsv_destinos.zip", lineasZip)
       );
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
 
       const lineas = await client.getLineas();
       const linea181 = lineas.find((l) => l.descLinea === "181");
@@ -354,7 +354,7 @@ describe("CkanClient", () => {
         mockAnyPackageResponse(FAKE_HORARIOS_RESOURCE),
         mockBinaryDownload("uptu_pasada_variante.zip", horarioZip)
       );
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
 
       await client.getHorarios();
       // Should NOT have fetched any generar_zip2 URL
@@ -370,7 +370,7 @@ describe("CkanClient", () => {
         mockGenerarZipResponse("nom_tab=v_uptu_paradas", "/sit/tmp/v_uptu_paradas.zip"),
         mockBinaryDownload("v_uptu_paradas.zip", paradasZip)
       );
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
 
       await client.getParadas();
       // Should have fetched generar_zip2 URL
@@ -384,7 +384,7 @@ describe("CkanClient", () => {
         mockAnyPackageResponse(FAKE_PARADAS_RESOURCE),
         mockGenerarZipBadHtml("nom_tab=v_uptu_paradas")
       );
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
 
       await expect(client.getParadas()).rejects.toThrow(
         "Could not parse download URL from generar_zip2 response"
@@ -396,7 +396,7 @@ describe("CkanClient", () => {
       const fetchFn = composeFetch(
         mockAnyPackageResponse(wrongResources)
       );
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
 
       await expect(client.getParadas()).rejects.toThrow(
         'No resource matching "v_uptu_paradas"'
@@ -418,7 +418,7 @@ describe("CkanClient", () => {
           return mockBinaryDownload("uptu_pasada_variante.zip", horarioZip)(url);
         }
       );
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
 
       await client.getHorarios();
       client.clearCache();
@@ -445,31 +445,51 @@ describe("CkanClient", () => {
       { gid: 1, codLinea: 181, descLinea: "181", ordinalSublinea: 1, codSublinea: 1, descSublinea: "TEST", codVariante: 52, descVariante: "A", codOrigen: 1, descOrigen: "ORIG", codDestino: 2, descDestino: "DEST" },
     ];
 
-    // Cleanup helper
-    function removeIfExists(path: string) {
-      if (existsSync(path)) unlinkSync(path);
+    // Save originals before tests, restore after (avoid destroying real generated files)
+    const originals = new Map<string, Buffer>();
+
+    function backupIfExists(path: string) {
+      if (existsSync(path)) originals.set(path, readFileSync(path));
     }
 
+    function restoreOrRemove(path: string) {
+      const orig = originals.get(path);
+      if (orig) writeFileSync(path, orig);
+      else if (existsSync(path)) unlinkSync(path);
+      originals.delete(path);
+    }
+
+    beforeEach(() => {
+      // Only backup the small files — skip horarios (68MB) since we never
+      // write to horariosJsonPath in tests that would conflict with it
+      backupIfExists(paradasJsonPath);
+      backupIfExists(lineasJsonPath);
+    });
+
     afterEach(() => {
-      removeIfExists(paradasJsonPath);
-      removeIfExists(horariosJsonPath);
-      removeIfExists(lineasJsonPath);
+      restoreOrRemove(paradasJsonPath);
+      if (existsSync(horariosJsonPath) && originals.has(horariosJsonPath)) {
+        restoreOrRemove(horariosJsonPath);
+      } else if (existsSync(horariosJsonPath)) {
+        // Test wrote a small file; check if it's our test data (< 1KB)
+        const stat = statSync(horariosJsonPath);
+        if (stat.size < 1024) unlinkSync(horariosJsonPath);
+      }
+      restoreOrRemove(lineasJsonPath);
     });
 
     it("getParadas loads from local JSON when file exists", async () => {
       writeFileSync(paradasJsonPath, JSON.stringify(sampleParadas), "utf-8");
-      // fetchFn should never be called — use one that throws
-      const fetchFn = composeFetch(mockNetworkError(""));
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache });
 
       const paradas = await client.getParadas();
       expect(paradas).toEqual(sampleParadas);
     });
 
     it("getHorarios loads from local JSON when file exists", async () => {
+      backupIfExists(horariosJsonPath);
       writeFileSync(horariosJsonPath, JSON.stringify(sampleHorarios), "utf-8");
-      const fetchFn = composeFetch(mockNetworkError(""));
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache });
 
       const horarios = await client.getHorarios();
       expect(horarios).toEqual(sampleHorarios);
@@ -477,36 +497,40 @@ describe("CkanClient", () => {
 
     it("getLineas loads from local JSON when file exists", async () => {
       writeFileSync(lineasJsonPath, JSON.stringify(sampleLineas), "utf-8");
-      const fetchFn = composeFetch(mockNetworkError(""));
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache });
 
       const lineas = await client.getLineas();
       expect(lineas).toEqual(sampleLineas);
     });
 
     it("getParadas falls back to CKAN when local JSON does not exist", async () => {
-      removeIfExists(paradasJsonPath);
+      // Temporarily remove local file to test CKAN fallback
+      const saved = existsSync(paradasJsonPath) ? readFileSync(paradasJsonPath) : null;
+      if (existsSync(paradasJsonPath)) unlinkSync(paradasJsonPath);
+
       const paradasZip = readFileSync(join(fixturesDir, "paradas-sample.zip"));
       const fetchFn = composeFetch(
         mockAnyPackageResponse(FAKE_PARADAS_RESOURCE),
         mockGenerarZipResponse("nom_tab=v_uptu_paradas", "/sit/tmp/v_uptu_paradas.zip"),
         mockBinaryDownload("v_uptu_paradas.zip", paradasZip)
       );
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
 
       const paradas = await client.getParadas();
       expect(paradas.length).toBeGreaterThan(0);
       expect(paradas[0].id).toBe(546);
+
+      // Restore
+      if (saved) writeFileSync(paradasJsonPath, saved);
     });
 
     it("local JSON data is cached in memory after first load", async () => {
       writeFileSync(paradasJsonPath, JSON.stringify(sampleParadas), "utf-8");
-      const fetchFn = composeFetch(mockNetworkError(""));
-      const client = new CkanClient({ cache, fetchFn });
+      const client = new CkanClient({ cache });
 
       const first = await client.getParadas();
       // Remove file — should still return cached data
-      removeIfExists(paradasJsonPath);
+      unlinkSync(paradasJsonPath);
       const second = await client.getParadas();
       expect(second).toEqual(first);
     });

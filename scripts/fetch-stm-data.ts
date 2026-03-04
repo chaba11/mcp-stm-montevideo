@@ -36,7 +36,18 @@ async function main() {
   console.log("2/3 Fetching horarios...");
   const horarios = await client.getHorarios();
   const horariosPath = join(DATA_DIR, "stm-horarios.json");
-  writeFileSync(horariosPath, JSON.stringify(horarios), "utf-8");
+  // Store as compact tuple format: [tipo_dia, cod_variante, frecuencia, cod_ubic_parada, ordinal, hora, dia_anterior]
+  // This reduces file size ~75% (no repeated key names for 2M+ rows)
+  const compactHorarios = horarios.map((h) => [
+    h.tipo_dia,
+    h.cod_variante,
+    h.frecuencia,
+    h.cod_ubic_parada,
+    h.ordinal,
+    h.hora,
+    h.dia_anterior,
+  ]);
+  writeFileSync(horariosPath, JSON.stringify(compactHorarios), "utf-8");
   console.log(`  → ${horarios.length} horarios (${fileSizeKB(horariosPath)} KB)`);
 
   client.clearCache();

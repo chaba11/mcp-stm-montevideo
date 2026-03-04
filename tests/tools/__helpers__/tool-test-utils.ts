@@ -17,7 +17,7 @@ export interface MockClientOptions {
 /** Create a CkanClient with all data methods overridden by fixtures. */
 export function createMockClient(options: MockClientOptions = {}): CkanClient {
   const cache = new Cache();
-  const client = new CkanClient({ cache });
+  const client = new CkanClient({ cache, skipLocalFiles: true });
   client.getParadas = async () => options.paradas ?? PARADAS_FIXTURE;
   client.getHorarios = async () => options.horarios ?? HORARIOS_FIXTURE;
   client.getLineas = async () => options.lineas ?? LINEAS_FIXTURE;

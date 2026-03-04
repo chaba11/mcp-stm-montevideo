@@ -100,15 +100,35 @@ export async function proximosBusesHandler(
   const { parada_id, calle1, calle2, linea, cantidad = 5 } = args;
   const currentTime = now ?? new Date();
 
+  // Early exit for missing input
+  if (parada_id === undefined && !calle1) {
+    return textResponse(
+      "Proporciona un parada_id o una dirección (calle1 y opcionalmente calle2)."
+    );
+  }
+
+  // Load all datasets in parallel upfront — avoids sequential waterfall
+  let paradas, horarios, lineas;
+  try {
+    [paradas, horarios, lineas] = await Promise.all([
+      client.getParadas(),
+      client.getHorarios(),
+      client.getLineas(),
+    ]);
+  } catch (err) {
+    return textResponse(
+      `Error al cargar datos del STM: ${err instanceof Error ? err.message : "Error desconocido"}.`
+    );
+  }
+
   let paradaId: number;
   let paradaNombre: string;
 
   if (parada_id !== undefined) {
     paradaId = parada_id;
     paradaNombre = `Parada ${paradaId}`;
-  } else if (calle1) {
-    const paradas = await client.getParadas();
-    const resolved = await resolveParadaId(calle1, calle2, paradas, linea);
+  } else {
+    const resolved = await resolveParadaId(calle1!, calle2, paradas, linea);
     if (!resolved) {
       return textResponse(
         `No se encontró ninguna parada en "${calle1}${calle2 ? " y " + calle2 : ""}".`
@@ -116,23 +136,6 @@ export async function proximosBusesHandler(
     }
     paradaId = resolved.id;
     paradaNombre = resolved.nombre;
-  } else {
-    return textResponse(
-      "Proporciona un parada_id o una dirección (calle1 y opcionalmente calle2)."
-    );
-  }
-
-  // Always load CKAN data (needed for fallback and to determine lines)
-  let horarios, lineas;
-  try {
-    [horarios, lineas] = await Promise.all([
-      client.getHorarios(),
-      client.getLineas(),
-    ]);
-  } catch (err) {
-    return textResponse(
-      `Error al cargar los horarios del STM: ${err instanceof Error ? err.message : "Error desconocido"}.`
-    );
   }
 
   // Try real-time ETA first if GPS client is available
@@ -163,7 +166,6 @@ export async function proximosBusesHandler(
         // If mapper can't find a match, skip fetchUpcomingBuses but still try position-based ETA.
         let gpsBusstopId: number | null = paradaId;
         if (stopMapper) {
-          const paradas = await client.getParadas();
           const parada = paradas.find((p) => p.id === paradaId);
           if (parada) {
             gpsBusstopId = await stopMapper.resolveGpsBusstopId(paradaId, parada.lat, parada.lng);
@@ -196,7 +198,6 @@ export async function proximosBusesHandler(
         }
 
         // upcomingBuses empty or skipped — try GPS position-based ETA estimation
-        const paradas = await client.getParadas();
         const gpsLines = queryLines.slice(0, 5); // limit parallel calls
         const positionResults = await Promise.all(
           gpsLines.map((l) => gps.fetchBusPositions(l).catch(() => null))
