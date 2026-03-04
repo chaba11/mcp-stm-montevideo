@@ -22,6 +22,7 @@ export function normalizeText(text: string): string {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "") // strip combining diacritics
     .replace(/[^\x00-\x7f]/g, "") // strip remaining non-ASCII (e.g. encoding artifacts)
+    .replace(/[^a-z0-9 ]/g, "") // strip punctuation (dots, hyphens, etc.)
     .replace(/\s+/g, " ")
     .trim();
 
