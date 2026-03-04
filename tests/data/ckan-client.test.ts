@@ -535,4 +535,34 @@ describe("CkanClient", () => {
       expect(second).toEqual(first);
     });
   });
+
+  // ── dedupFetch ──────────────────────────────────────────────────────────────
+
+  describe("dedupFetch (in-flight deduplication)", () => {
+    it("concurrent getParadas calls only trigger one network fetch", async () => {
+      const paradasZip = readFileSync(join(fixturesDir, "paradas-sample.zip"));
+      let zipDownloadCount = 0;
+      const fetchFn = composeFetch(
+        mockAnyPackageResponse(FAKE_PARADAS_RESOURCE),
+        mockGenerarZipResponse("nom_tab=v_uptu_paradas", "/sit/tmp/v_uptu_paradas.zip"),
+        (url: string) => {
+          if (url.includes("v_uptu_paradas.zip")) {
+            zipDownloadCount++;
+            return {
+              ok: true, status: 200,
+              async arrayBuffer() { return paradasZip.buffer.slice(paradasZip.byteOffset, paradasZip.byteOffset + paradasZip.byteLength) as ArrayBuffer; },
+              async text() { return ""; },
+            };
+          }
+          return null as never;
+        },
+      );
+      const client = new CkanClient({ cache, fetchFn, skipLocalFiles: true });
+
+      // Fire two concurrent calls — both should resolve to the same data
+      const [a, b] = await Promise.all([client.getParadas(), client.getParadas()]);
+      expect(a).toBe(b); // Same reference, not just equal
+      expect(zipDownloadCount).toBe(1); // Only one ZIP download
+    });
+  });
 });

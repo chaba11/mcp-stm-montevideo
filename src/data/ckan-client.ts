@@ -100,6 +100,8 @@ export class CkanClient {
   private fetchFn: FetchFn;
   private skipLocalFiles: boolean;
   private skipDiskCache: boolean;
+  /** In-flight fetch deduplication: if a dataset is already being fetched, reuse the same Promise */
+  private inflight = new Map<string, Promise<unknown>>();
 
   constructor(options: CkanClientOptions = {}) {
     this.cache = options.cache ?? new Cache();
@@ -256,27 +258,29 @@ export class CkanClient {
       }
     }
 
-    const downloadUrl = await this.resolveDownloadUrl(PARADAS_PACKAGE, PARADAS_RESOURCE_PATTERN);
-    const dbfBuffer = await this.downloadAndExtract(downloadUrl, /\.dbf$/i);
-    const records = parseDbf(dbfBuffer);
+    return this.dedupFetch(cacheKey, async () => {
+      const downloadUrl = await this.resolveDownloadUrl(PARADAS_PACKAGE, PARADAS_RESOURCE_PATTERN);
+      const dbfBuffer = await this.downloadAndExtract(downloadUrl, /\.dbf$/i);
+      const records = parseDbf(dbfBuffer);
 
-    const paradas: Parada[] = records.map((r) => {
-      const coords = utm21SToWgs84(r["X"] as number, r["Y"] as number);
-      return {
-        id: r["COD_UBIC_P"] as number,
-        linea: (r["DESC_LINEA"] as string).trim(),
-        variante: r["COD_VARIAN"] as number,
-        ordinal: r["ORDINAL"] as number,
-        calle: (r["CALLE"] as string).trim(),
-        esquina: (r["ESQUINA"] as string).trim(),
-        lat: coords.lat,
-        lng: coords.lng,
-      };
+      const paradas: Parada[] = records.map((r) => {
+        const coords = utm21SToWgs84(r["X"] as number, r["Y"] as number);
+        return {
+          id: r["COD_UBIC_P"] as number,
+          linea: (r["DESC_LINEA"] as string).trim(),
+          variante: r["COD_VARIAN"] as number,
+          ordinal: r["ORDINAL"] as number,
+          calle: (r["CALLE"] as string).trim(),
+          esquina: (r["ESQUINA"] as string).trim(),
+          lat: coords.lat,
+          lng: coords.lng,
+        };
+      });
+
+      this.cache.set(cacheKey, paradas, TTL_24H);
+      writeDiskCache("stm-paradas.json", paradas);
+      return paradas;
     });
-
-    this.cache.set(cacheKey, paradas, TTL_24H);
-    writeDiskCache("stm-paradas.json", paradas);
-    return paradas;
   }
 
   /**
@@ -306,24 +310,26 @@ export class CkanClient {
       }
     }
 
-    const downloadUrl = await this.resolveDownloadUrl(HORARIOS_PACKAGE, HORARIOS_RESOURCE_PATTERN);
-    const csvBuffer = await this.downloadAndExtract(downloadUrl, /\.csv$/i);
-    const csvText = csvBuffer.toString("utf-8");
+    return this.dedupFetch(cacheKey, async () => {
+      const downloadUrl = await this.resolveDownloadUrl(HORARIOS_PACKAGE, HORARIOS_RESOURCE_PATTERN);
+      const csvBuffer = await this.downloadAndExtract(downloadUrl, /\.csv$/i);
+      const csvText = csvBuffer.toString("utf-8");
 
-    const rows = parse(csvText, {
-      delimiter: ";",
-      columns: true,
-      skip_empty_lines: true,
-      cast: (value, context) => {
-        if (context.column === "dia_anterior") return value;
-        const num = parseInt(value, 10);
-        return isNaN(num) ? value : num;
-      },
-    }) as HorarioRow[];
+      const rows = parse(csvText, {
+        delimiter: ";",
+        columns: true,
+        skip_empty_lines: true,
+        cast: (value, context) => {
+          if (context.column === "dia_anterior") return value;
+          const num = parseInt(value, 10);
+          return isNaN(num) ? value : num;
+        },
+      }) as HorarioRow[];
 
-    this.cache.set(cacheKey, rows, TTL_24H);
-    writeDiskCache("stm-horarios.json", compactHorarioRows(rows));
-    return rows;
+      this.cache.set(cacheKey, rows, TTL_24H);
+      writeDiskCache("stm-horarios.json", compactHorarioRows(rows));
+      return rows;
+    });
   }
 
   /**
@@ -351,28 +357,44 @@ export class CkanClient {
       }
     }
 
-    const downloadUrl = await this.resolveDownloadUrl(LINEAS_PACKAGE, LINEAS_RESOURCE_PATTERN);
-    const dbfBuffer = await this.downloadAndExtract(downloadUrl, /\.dbf$/i);
-    const records = parseDbf(dbfBuffer);
+    return this.dedupFetch(cacheKey, async () => {
+      const downloadUrl = await this.resolveDownloadUrl(LINEAS_PACKAGE, LINEAS_RESOURCE_PATTERN);
+      const dbfBuffer = await this.downloadAndExtract(downloadUrl, /\.dbf$/i);
+      const records = parseDbf(dbfBuffer);
 
-    const lineas: LineaVariante[] = records.map((r) => ({
-      gid: r["GID"] as number,
-      codLinea: r["COD_LINEA"] as number,
-      descLinea: (r["DESC_LINEA"] as string).trim(),
-      ordinalSublinea: r["ORDINAL_SU"] as number,
-      codSublinea: r["COD_SUBLIN"] as number,
-      descSublinea: (r["DESC_SUBLI"] as string).trim(),
-      codVariante: r["COD_VARIAN"] as number,
-      descVariante: (r["DESC_VARIA"] as string).trim(),
-      codOrigen: r["COD_ORIGEN"] as number,
-      descOrigen: (r["DESC_ORIGE"] as string).trim(),
-      codDestino: r["COD_DESTIN"] as number,
-      descDestino: (r["DESC_DESTI"] as string).trim(),
-    }));
+      const lineas: LineaVariante[] = records.map((r) => ({
+        gid: r["GID"] as number,
+        codLinea: r["COD_LINEA"] as number,
+        descLinea: (r["DESC_LINEA"] as string).trim(),
+        ordinalSublinea: r["ORDINAL_SU"] as number,
+        codSublinea: r["COD_SUBLIN"] as number,
+        descSublinea: (r["DESC_SUBLI"] as string).trim(),
+        codVariante: r["COD_VARIAN"] as number,
+        descVariante: (r["DESC_VARIA"] as string).trim(),
+        codOrigen: r["COD_ORIGEN"] as number,
+        descOrigen: (r["DESC_ORIGE"] as string).trim(),
+        codDestino: r["COD_DESTIN"] as number,
+        descDestino: (r["DESC_DESTI"] as string).trim(),
+      }));
 
-    this.cache.set(cacheKey, lineas, TTL_24H);
-    writeDiskCache("stm-lineas.json", lineas);
-    return lineas;
+      this.cache.set(cacheKey, lineas, TTL_24H);
+      writeDiskCache("stm-lineas.json", lineas);
+      return lineas;
+    });
+  }
+
+  /**
+   * Deduplicate concurrent fetches for the same key.
+   * If a fetch is already in-flight, reuse that Promise instead of starting a new one.
+   * This prevents the warmup + first tool call from hitting CKAN twice.
+   */
+  private async dedupFetch<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const existing = this.inflight.get(key) as Promise<T> | undefined;
+    if (existing) return existing;
+
+    const promise = fn().finally(() => this.inflight.delete(key));
+    this.inflight.set(key, promise);
+    return promise;
   }
 
   /** Invalidate all caches (useful for testing) */
