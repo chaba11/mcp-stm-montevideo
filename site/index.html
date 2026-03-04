@@ -673,8 +673,8 @@
       <span class="lang-en">One command, zero config</span>
       <span class="lang-es">Un comando, cero configuración</span>
     </h2>
-    <p class="section-desc lang-en">Run it directly with npx. Data downloads automatically from Montevideo's open data portal and caches in memory.</p>
-    <p class="section-desc lang-es">Ejecutalo directamente con npx. Los datos se descargan automáticamente del portal de datos abiertos de Montevideo y se cachean en memoria.</p>
+    <p class="section-desc lang-en">Run it directly with npx. Data downloads automatically from Montevideo's open data portal, caches to disk, and warms up on startup for fast responses.</p>
+    <p class="section-desc lang-es">Ejecutalo directamente con npx. Los datos se descargan automáticamente del portal de datos abiertos de Montevideo, se cachean en disco y se pre-cargan al iniciar para respuestas rápidas.</p>
 
     <div class="install-oneliner">
       <code><span class="prefix">$</span> npx mcp-stm-montevideo</code>
@@ -766,8 +766,8 @@
         <span class="lang-en">Optional: pre-download datasets</span>
         <span class="lang-es">Opcional: pre-descargar datasets</span>
       </div>
-      <p class="lang-en">The server downloads data on first use, which can take ~60s. If you clone the repo, you can pre-download datasets for faster cold starts:</p>
-      <p class="lang-es">El servidor descarga datos en el primer uso, lo que puede demorar ~60s. Si clonás el repo, podés pre-descargar los datasets para arranques más rápidos:</p>
+      <p class="lang-en">The first run downloads data (~60s) and caches it to <code>~/.cache/mcp-stm-montevideo/</code>. Subsequent runs load from disk cache in ~2s. For development, you can also bundle datasets into the build:</p>
+      <p class="lang-es">La primera ejecución descarga datos (~60s) y los cachea en <code>~/.cache/mcp-stm-montevideo/</code>. Las siguientes ejecuciones cargan del caché en disco en ~2s. Para desarrollo, también podés empaquetar los datasets en el build:</p>
       <div class="tip-commands">
         <div class="tip-cmd">
           <div>
