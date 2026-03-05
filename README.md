@@ -170,9 +170,9 @@ Los datos provienen de los **Datos Abiertos de la Intendencia de Montevideo**:
 - Dataset paradas: coordenadas en EPSG:32721 (UTM Zone 21S), convertidas a WGS84
 - Dataset recorridos y líneas: origen/destino de cada variante
 
-Los datos se cachean en disco por 6 meses y en memoria por 24h. El caché en disco (`~/.cache/mcp-stm-montevideo/`) persiste entre reinicios del servidor, eliminando la descarga de ~60s en ejecuciones posteriores.
+Los datos se cachean en disco por 6 meses y en memoria por 1 mes. El caché en disco (`~/.cache/mcp-stm-montevideo/`) persiste entre reinicios del servidor, eliminando la descarga de ~60s en ejecuciones posteriores.
 
-*Data is cached to disk for 6 months and in memory for 24h. The disk cache (`~/.cache/mcp-stm-montevideo/`) persists across server restarts, eliminating the ~60s download on subsequent runs.*
+*Data is cached to disk for 6 months and in memory for 1 month. The disk cache (`~/.cache/mcp-stm-montevideo/`) persists across server restarts, eliminating the ~60s download on subsequent runs.*
 
 ---
 

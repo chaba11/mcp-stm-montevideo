@@ -348,7 +348,7 @@ export function createRestApp(
 
   // MCP over HTTP — stateless Streamable HTTP transport
   // Each request gets a fresh McpServer + transport (SDK requirement for stateless mode).
-  // The shared `client` (CkanClient with 24h cache) is reused across requests.
+  // The shared `client` (CkanClient with 1-month cache) is reused across requests.
   // POST only: GET would open an infinite SSE stream that times out behind Cloudflare (524).
   // Stateless servers SHOULD return 405 for GET/DELETE per MCP spec.
   app.post("/mcp", async (c) => {

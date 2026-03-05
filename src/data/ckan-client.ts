@@ -14,7 +14,7 @@ import type { LineaVariante } from "../types/linea.js";
 
 const CKAN_BASE = "https://ckan.montevideo.gub.uy/api/3/action";
 
-const TTL_24H = 24 * 60 * 60 * 1000;
+const TTL_1M = 30 * 24 * 60 * 60 * 1000; // 1 month
 const DISK_TTL_6M = 180 * 24 * 60 * 60 * 1000; // 6 months — CKAN dataset last updated 2023
 
 // Timeouts
@@ -136,7 +136,7 @@ export class CkanClient {
     }
 
     const resources = data.result.resources;
-    this.cache.set(cacheKey, resources, TTL_24H);
+    this.cache.set(cacheKey, resources, TTL_1M);
     return resources;
   }
 
@@ -189,7 +189,7 @@ export class CkanClient {
       (r) => r.url.includes(resourcePattern) && r.url.endsWith(".zip") && !r.url.includes("generar_zip2"),
     );
     if (directResource) {
-      this.cache.set(resolvedCacheKey, directResource.url, TTL_24H);
+      this.cache.set(resolvedCacheKey, directResource.url, TTL_1M);
       return directResource.url;
     }
 
@@ -207,7 +207,7 @@ export class CkanClient {
 
     // Direct download URLs can be used as-is
     if (!url.includes("generar_zip2")) {
-      this.cache.set(resolvedCacheKey, url, TTL_24H);
+      this.cache.set(resolvedCacheKey, url, TTL_1M);
       return url;
     }
 
@@ -245,7 +245,7 @@ export class CkanClient {
     if (!this.skipLocalFiles) {
       const local = loadLocalJson<Parada[]>("stm-paradas.json");
       if (local) {
-        this.cache.set(cacheKey, local, TTL_24H);
+        this.cache.set(cacheKey, local, TTL_1M);
         return local;
       }
     }
@@ -253,7 +253,7 @@ export class CkanClient {
     if (!this.skipDiskCache) {
       const diskData = readDiskCache<Parada[]>("stm-paradas.json", DISK_TTL_6M);
       if (diskData) {
-        this.cache.set(cacheKey, diskData, TTL_24H);
+        this.cache.set(cacheKey, diskData, TTL_1M);
         return diskData;
       }
     }
@@ -277,7 +277,7 @@ export class CkanClient {
         };
       });
 
-      this.cache.set(cacheKey, paradas, TTL_24H);
+      this.cache.set(cacheKey, paradas, TTL_1M);
       writeDiskCache("stm-paradas.json", paradas);
       return paradas;
     });
@@ -296,7 +296,7 @@ export class CkanClient {
       const local = loadLocalJson<unknown[]>("stm-horarios.json");
       if (local) {
         const rows = hydrateHorarioTuples(local);
-        this.cache.set(cacheKey, rows, TTL_24H);
+        this.cache.set(cacheKey, rows, TTL_1M);
         return rows;
       }
     }
@@ -305,7 +305,7 @@ export class CkanClient {
       const diskData = readDiskCache<unknown[]>("stm-horarios.json", DISK_TTL_6M);
       if (diskData) {
         const rows = hydrateHorarioTuples(diskData);
-        this.cache.set(cacheKey, rows, TTL_24H);
+        this.cache.set(cacheKey, rows, TTL_1M);
         return rows;
       }
     }
@@ -326,7 +326,7 @@ export class CkanClient {
         },
       }) as HorarioRow[];
 
-      this.cache.set(cacheKey, rows, TTL_24H);
+      this.cache.set(cacheKey, rows, TTL_1M);
       writeDiskCache("stm-horarios.json", compactHorarioRows(rows));
       return rows;
     });
@@ -344,7 +344,7 @@ export class CkanClient {
     if (!this.skipLocalFiles) {
       const local = loadLocalJson<LineaVariante[]>("stm-lineas.json");
       if (local) {
-        this.cache.set(cacheKey, local, TTL_24H);
+        this.cache.set(cacheKey, local, TTL_1M);
         return local;
       }
     }
@@ -352,7 +352,7 @@ export class CkanClient {
     if (!this.skipDiskCache) {
       const diskData = readDiskCache<LineaVariante[]>("stm-lineas.json", DISK_TTL_6M);
       if (diskData) {
-        this.cache.set(cacheKey, diskData, TTL_24H);
+        this.cache.set(cacheKey, diskData, TTL_1M);
         return diskData;
       }
     }
@@ -377,7 +377,7 @@ export class CkanClient {
         descDestino: (r["DESC_DESTI"] as string).trim(),
       }));
 
-      this.cache.set(cacheKey, lineas, TTL_24H);
+      this.cache.set(cacheKey, lineas, TTL_1M);
       writeDiskCache("stm-lineas.json", lineas);
       return lineas;
     });

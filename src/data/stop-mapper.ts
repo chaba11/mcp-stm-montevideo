@@ -8,7 +8,7 @@ import { Cache } from "./cache.js";
 import type { GpsClient, GpsBusstop } from "./gps-client.js";
 import { buildSpatialGrid, getCandidates, type SpatialGrid } from "../geo/spatial-grid.js";
 
-const TTL_24H = 24 * 60 * 60 * 1000;
+const TTL_1M = 30 * 24 * 60 * 60 * 1000; // 1 month
 const DEFAULT_TOLERANCE_METERS = 150;
 
 export interface StopMapperOptions {
@@ -28,13 +28,13 @@ export class StopMapper {
     this.toleranceMeters = options.toleranceMeters ?? DEFAULT_TOLERANCE_METERS;
   }
 
-  /** Fetch and cache the full list of GPS busstops (24h TTL). */
+  /** Fetch and cache the full list of GPS busstops (1-month TTL). */
   async getGpsBusstops(): Promise<GpsBusstop[]> {
     const cached = this.cache.get<GpsBusstop[]>("gps_busstops");
     if (cached) return cached;
 
     const busstops = await this.gps.fetchBusstops();
-    this.cache.set("gps_busstops", busstops, TTL_24H);
+    this.cache.set("gps_busstops", busstops, TTL_1M);
     return busstops;
   }
 
@@ -57,7 +57,7 @@ export class StopMapper {
     } catch {
       // GPS busstops endpoint failed — cannot resolve
       const result = null;
-      this.cache.set(cacheKey, result, TTL_24H);
+      this.cache.set(cacheKey, result, TTL_1M);
       return result;
     }
 
@@ -101,7 +101,7 @@ export class StopMapper {
     }
 
     const result = bestDistance <= this.toleranceMeters ? bestId : null;
-    this.cache.set(cacheKey, result, TTL_24H);
+    this.cache.set(cacheKey, result, TTL_1M);
     return result;
   }
 
