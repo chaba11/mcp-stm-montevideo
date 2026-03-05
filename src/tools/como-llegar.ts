@@ -5,7 +5,7 @@ import type { CkanClient } from "../data/ckan-client.js";
 import { findNearestParadasIndexed } from "../geo/distance.js";
 import { getDataIndexes } from "../data/data-indexes.js";
 import { buildSpatialGrid, getCandidates } from "../geo/spatial-grid.js";
-import { geocodeIntersection } from "../geo/geocode.js";
+import { geocodeIntersection, geocodePlace } from "../geo/geocode.js";
 import { fuzzySearchParadas } from "../geo/search.js";
 import type { Parada } from "../types/parada.js";
 
@@ -62,9 +62,9 @@ const DEFAULT_TRANSFER_RADIUS = 300; // meters
 
 // --- Input Schema ---
 const INPUT_SCHEMA = {
-  origen_calle1: z.string().describe("Calle de origen (ej: Bv España, Av Italia)"),
+  origen_calle1: z.string().describe("Calle o lugar de origen (ej: Bv España, Intendencia, Estadio Centenario)"),
   origen_calle2: z.string().optional().describe("Intersección de origen (ej: Libertad)"),
-  destino_calle1: z.string().describe("Calle de destino (ej: 18 de Julio, Rivera)"),
+  destino_calle1: z.string().describe("Calle o lugar de destino (ej: 18 de Julio, Campeón del Siglo, Tres Cruces)"),
   destino_calle2: z.string().optional().describe("Intersección de destino"),
   max_transbordos: z
     .number()
@@ -74,8 +74,8 @@ const INPUT_SCHEMA = {
   max_caminata_metros: z
     .number()
     .optional()
-    .default(500)
-    .describe("Máxima distancia a caminar hasta/desde la parada (por defecto: 500m)"),
+    .default(800)
+    .describe("Máxima distancia a caminar hasta/desde la parada (por defecto: 800m)"),
 };
 
 function textResponse(text: string): ToolResponse {
@@ -97,12 +97,16 @@ async function resolveLocation(
   paradas: Parada[]
 ): Promise<{ lat: number; lon: number } | null> {
   if (calle2) {
-    return geocodeIntersection(calle1, calle2, paradas);
+    const intersection = await geocodeIntersection(calle1, calle2, paradas);
+    if (intersection) return intersection;
   }
+  // Try fuzzy stop name search
   const matches = fuzzySearchParadas(calle1, paradas);
-  if (matches.length === 0) return null;
-  const top = matches[0];
-  return { lat: top.lat, lon: top.lng };
+  if (matches.length > 0) return { lat: matches[0].lat, lon: matches[0].lng };
+  // Fallback: geocode as place/landmark (LocalGeocoder + Nominatim)
+  const place = await geocodePlace(calle2 ? `${calle1} ${calle2}` : calle1);
+  if (place) return { lat: place.lat, lon: place.lon };
+  return null;
 }
 
 // LookupMaps type re-exported from data-indexes
@@ -349,7 +353,7 @@ export async function comoLlegarHandler(
     destino_calle1,
     destino_calle2,
     max_transbordos = 1,
-    max_caminata_metros = 500,
+    max_caminata_metros = 800,
   } = args;
 
   if (!origen_calle1?.trim() || !destino_calle1?.trim()) {
@@ -393,7 +397,7 @@ export async function comoLlegarHandler(
     paradas,
     grid,
     max_caminata_metros,
-    20
+    30
   ) as ParadaConDist[];
 
   const nearDest = findNearestParadasIndexed(
@@ -402,7 +406,7 @@ export async function comoLlegarHandler(
     paradas,
     grid,
     max_caminata_metros,
-    20
+    30
   ) as ParadaConDist[];
 
   if (nearOrigin.length === 0) {

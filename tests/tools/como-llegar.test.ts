@@ -16,7 +16,7 @@
  *   22: -34.925, -56.155
  *   23: -34.93, -56.15  (destination side)
  */
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { comoLlegarHandler } from "../../src/tools/como-llegar.js";
 import { Cache } from "../../src/data/cache.js";
 import { CkanClient } from "../../src/data/ckan-client.js";
@@ -367,6 +367,22 @@ describe("como_llegar — network fixture routing", () => {
     // Should not crash regardless of result
   });
 
+  it("default max_caminata_metros is 800", async () => {
+    const client = makeNetworkClient();
+    // With default (800m), should find stops that are within 800m
+    const result = await comoLlegarHandler(
+      {
+        origen_calle1: "LINEA 1",
+        origen_calle2: "P1",
+        destino_calle1: "LINEA 1",
+        destino_calle2: "P5",
+      },
+      client
+    );
+    expect(result.content[0].type).toBe("text");
+    // Should not crash — the default walking radius is now 800m
+  });
+
   it("very long route (30+ stops) returns result without crash", async () => {
     // L1 (5 stops) + L2 (5 stops) — create a client with longer lines
     const longParadas = [
@@ -413,5 +429,87 @@ describe("como_llegar — network fixture routing", () => {
         expect(parsed[0].duracion_total_estimada_min).toBeLessThan(120);
       }
     }
+  });
+});
+
+// ---- Landmark / geocodePlace fallback tests ----
+import * as geocodeModule from "../../src/geo/geocode.js";
+
+describe("como_llegar — geocodePlace fallback", () => {
+  let client: CkanClient;
+
+  beforeEach(() => {
+    client = makeRouteClient();
+  });
+
+  it("falls back to geocodePlace when fuzzySearchParadas returns nothing", async () => {
+    // Mock geocodePlace to return coordinates near stop 10 (ORIGEN ST)
+    const spy = vi.spyOn(geocodeModule, "geocodePlace").mockResolvedValue({
+      lat: -34.9005,
+      lon: -56.1805,
+      displayName: "Intendencia de Montevideo",
+    });
+
+    const result = await comoLlegarHandler(
+      {
+        origen_calle1: "Intendencia",
+        destino_calle1: "DESTINO ST",
+        max_caminata_metros: 500,
+      },
+      client
+    );
+
+    // geocodePlace should have been called for "Intendencia" (no fuzzy match)
+    expect(spy).toHaveBeenCalledWith("Intendencia");
+    // Should find routes since mocked coords are near stop 10
+    if (result.content[0].text.startsWith("[")) {
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.length).toBeGreaterThan(0);
+    }
+
+    spy.mockRestore();
+  });
+
+  it("falls back to geocodePlace when geocodeIntersection returns null", async () => {
+    // Mock geocodeIntersection to return null and geocodePlace to return coords near stop 23
+    const intSpy = vi.spyOn(geocodeModule, "geocodeIntersection").mockResolvedValue(null);
+    const placeSpy = vi.spyOn(geocodeModule, "geocodePlace").mockImplementation(async (name) => {
+      if (typeof name === "string" && name.includes("Campeón")) {
+        return { lat: -34.9305, lon: -56.1505, displayName: "Estadio Campeón del Siglo" };
+      }
+      return null;
+    });
+
+    await comoLlegarHandler(
+      {
+        origen_calle1: "ORIGEN ST",
+        destino_calle1: "Campeón del Siglo",
+        destino_calle2: "Ruta 102",
+        max_caminata_metros: 500,
+      },
+      client
+    );
+
+    // geocodePlace should have been called with combined string
+    expect(placeSpy).toHaveBeenCalledWith("Campeón del Siglo Ruta 102");
+
+    intSpy.mockRestore();
+    placeSpy.mockRestore();
+  });
+
+  it("returns not-found when geocodePlace also returns null", async () => {
+    const spy = vi.spyOn(geocodeModule, "geocodePlace").mockResolvedValue(null);
+
+    const result = await comoLlegarHandler(
+      {
+        origen_calle1: "LugarQueNoExisteEnNingunLado",
+        destino_calle1: "DESTINO ST",
+        max_caminata_metros: 500,
+      },
+      client
+    );
+
+    expect(result.content[0].text).toMatch(/No se encontró el origen/);
+    spy.mockRestore();
   });
 });
