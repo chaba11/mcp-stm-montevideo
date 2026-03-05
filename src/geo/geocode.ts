@@ -6,6 +6,19 @@ import { getDataIndexes } from "../data/data-indexes.js";
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 const USER_AGENT = "mcp-stm-montevideo/1.0 (github.com/chaba11/mcp-stm-montevideo)";
 
+// Geocoding result caches (max 200 entries each)
+const MAX_CACHE = 200;
+const placeCache = new Map<string, GeoPlace | null>();
+const intersectionCache = new Map<string, GeoPoint | null>();
+
+function cacheSet<T>(cache: Map<string, T>, key: string, value: T): void {
+  if (cache.size >= MAX_CACHE) {
+    const firstKey = cache.keys().next().value!;
+    cache.delete(firstKey);
+  }
+  cache.set(key, value);
+}
+
 // Montevideo bounding box (roughly): lat -35.0 to -34.7, lon -56.4 to -55.9
 const MVD_BBOX = { minLat: -35.1, maxLat: -34.6, minLon: -56.6, maxLon: -55.9 };
 
@@ -255,12 +268,20 @@ export async function geocodePlace(
   place: string,
   fetchFn: FetchFn = fetch
 ): Promise<GeoPlace | null> {
+  const cacheKey = normalizeText(place);
+  if (placeCache.has(cacheKey)) return placeCache.get(cacheKey)!;
+
   // 1. Try offline OSM data first
   const local = getLocalGeocoder().searchPlace(place);
-  if (local) return local;
+  if (local) {
+    cacheSet(placeCache, cacheKey, local);
+    return local;
+  }
 
   // 2. Fall back to Nominatim
-  return geocodePlaceFromNominatim(place, fetchFn);
+  const result = await geocodePlaceFromNominatim(place, fetchFn);
+  cacheSet(placeCache, cacheKey, result);
+  return result;
 }
 
 /**
@@ -275,14 +296,25 @@ export async function geocodeIntersection(
 ): Promise<GeoPoint | null> {
   if (!calle1.trim()) return null;
 
+  const cacheKey = `${normalizeText(calle1)}:${normalizeText(calle2)}`;
+  if (intersectionCache.has(cacheKey)) return intersectionCache.get(cacheKey)!;
+
   // 1. Try paradas data (fastest, no network)
   const fromParadas = geocodeFromParadas(calle1, calle2, paradas);
-  if (fromParadas) return fromParadas;
+  if (fromParadas) {
+    cacheSet(intersectionCache, cacheKey, fromParadas);
+    return fromParadas;
+  }
 
   // 2. Try local OSM data (offline, handles intersections not in paradas)
   const fromLocal = getLocalGeocoder().searchIntersection(calle1, calle2);
-  if (fromLocal) return fromLocal;
+  if (fromLocal) {
+    cacheSet(intersectionCache, cacheKey, fromLocal);
+    return fromLocal;
+  }
 
   // 3. Fall back to Nominatim (network)
-  return geocodeFromNominatim(calle1, calle2, fetchFn);
+  const result = await geocodeFromNominatim(calle1, calle2, fetchFn);
+  cacheSet(intersectionCache, cacheKey, result);
+  return result;
 }

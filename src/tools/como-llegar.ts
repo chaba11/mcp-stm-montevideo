@@ -1,8 +1,7 @@
 import * as z from "zod/v4";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { getDistance } from "geolib";
 import type { CkanClient } from "../data/ckan-client.js";
-import { findNearestParadasIndexed } from "../geo/distance.js";
+import { findNearestParadasIndexed, fastDistMeters } from "../geo/distance.js";
 import { getDataIndexes } from "../data/data-indexes.js";
 import { buildSpatialGrid, getCandidates } from "../geo/spatial-grid.js";
 import { geocodeIntersection, geocodePlace } from "../geo/geocode.js";
@@ -119,7 +118,7 @@ function findDirectRoutes(
   nearDest: ParadaConDist[],
   maps: LookupMaps
 ): RouteOption[] {
-  const { variantesByParadaId, paradasByVariante, lineasMap } = maps;
+  const { variantesByParadaId, paradasByVariante, paradaForVariante, lineasMap } = maps;
   const destById = new Map(nearDest.map((d) => [d.id, d]));
   const results: RouteOption[] = [];
   const seen = new Set<string>();
@@ -128,7 +127,7 @@ function findDirectRoutes(
     const variants = variantesByParadaId.get(origStop.id) ?? new Set();
     for (const codVariante of variants) {
       const variantStops = paradasByVariante.get(codVariante) ?? [];
-      const origP = variantStops.find((p) => p.id === origStop.id);
+      const origP = paradaForVariante.get(`${origStop.id}:${codVariante}`);
       if (!origP) continue;
 
       for (const varStop of variantStops) {
@@ -184,7 +183,7 @@ function findTransferRoutes(
   nearDest: ParadaConDist[],
   maps: LookupMaps
 ): RouteOption[] {
-  const { variantesByParadaId, paradasByVariante, lineasMap } = maps;
+  const { variantesByParadaId, paradasByVariante, paradaForVariante, lineasMap } = maps;
   const results: RouteOption[] = [];
   const seen = new Set<string>();
 
@@ -202,11 +201,11 @@ function findTransferRoutes(
     const variants = variantesByParadaId.get(origStop.id) ?? new Set();
     for (const codVariante of variants) {
       const variantStops = paradasByVariante.get(codVariante) ?? [];
-      const origP = variantStops.find((p) => p.id === origStop.id);
+      const origP = paradaForVariante.get(`${origStop.id}:${codVariante}`);
       if (!origP) continue;
-      // Collect all stops after origin (up to 60 stops = ~30 min ride)
+      // Collect all stops after origin (up to 40 stops = ~80 min ride)
       for (const stop of variantStops) {
-        if (stop.ordinal > origP.ordinal && stop.ordinal - origP.ordinal <= 60) {
+        if (stop.ordinal > origP.ordinal && stop.ordinal - origP.ordinal <= 40) {
           reachableFromOrigin.push({
             stop,
             codVariante,
@@ -233,11 +232,11 @@ function findTransferRoutes(
     const variants = variantesByParadaId.get(destStop.id) ?? new Set();
     for (const codVariante of variants) {
       const variantStops = paradasByVariante.get(codVariante) ?? [];
-      const destP = variantStops.find((p) => p.id === destStop.id);
+      const destP = paradaForVariante.get(`${destStop.id}:${codVariante}`);
       if (!destP) continue;
-      // Collect all stops before dest (up to 60 stops)
+      // Collect all stops before dest (up to 40 stops)
       for (const stop of variantStops) {
-        if (stop.ordinal < destP.ordinal && destP.ordinal - stop.ordinal <= 60) {
+        if (stop.ordinal < destP.ordinal && destP.ordinal - stop.ordinal <= 40) {
           stopsReachingDest.push({
             stop,
             codVariante,
@@ -250,23 +249,46 @@ function findTransferRoutes(
     }
   }
 
+  // Deduplicate reachableFromOrigin: keep shortest ride per (stop.id, codVariante)
+  const reachDedup = new Map<string, ReachableStop>();
+  for (const r of reachableFromOrigin) {
+    const key = `${r.stop.id}:${r.codVariante}`;
+    const existing = reachDedup.get(key);
+    if (!existing || r.numStopsFromOrig < existing.numStopsFromOrig) {
+      reachDedup.set(key, r);
+    }
+  }
+  const dedupedReachable = Array.from(reachDedup.values());
+  // Sort by numStopsFromOrig ascending to find short transfers first
+  dedupedReachable.sort((a, b) => a.numStopsFromOrig - b.numStopsFromOrig);
+
+  // Deduplicate stopsReachingDest: keep shortest ride per (stop.id, codVariante)
+  const destDedup = new Map<string, StopToDest>();
+  for (const d of stopsReachingDest) {
+    const key = `${d.stop.id}:${d.codVariante}`;
+    const existing = destDedup.get(key);
+    if (!existing || d.numStopsToDest < existing.numStopsToDest) {
+      destDedup.set(key, d);
+    }
+  }
+  const dedupedDest = Array.from(destDedup.values());
+
   // Build spatial grid over destination-reachable stops for O(1) proximity lookup
   const destGrid = buildSpatialGrid(
-    stopsReachingDest.map((d) => ({ lat: d.stop.lat, lng: d.stop.lng }))
+    dedupedDest.map((d) => ({ lat: d.stop.lat, lng: d.stop.lng })),
+    0.003 // ~330m cells, matching 300m transfer radius
   );
 
   // Find transfer points: reachable stops near stops-reaching-dest
-  for (const r of reachableFromOrigin) {
+  for (const r of dedupedReachable) {
+    if (results.length >= 50) break; // early termination
     const candidates = getCandidates(destGrid, r.stop.lat, r.stop.lng);
     for (const c of candidates) {
-      const d = stopsReachingDest[c.index];
+      const d = dedupedDest[c.index];
       // Skip same variant (already handled in direct routes)
       if (r.codVariante === d.codVariante) continue;
 
-      const dist = getDistance(
-        { latitude: r.stop.lat, longitude: r.stop.lng },
-        { latitude: d.stop.lat, longitude: d.stop.lng }
-      );
+      const dist = fastDistMeters(r.stop.lat, r.stop.lng, d.stop.lat, d.stop.lng);
 
       if (dist > DEFAULT_TRANSFER_RADIUS) continue;
 
@@ -283,14 +305,10 @@ function findTransferRoutes(
       const ride2Min = d.numStopsToDest * MIN_PER_STOP;
       const walkFromMin = walkDuration(d.destStop.distancia_metros);
 
-      const boardP = paradasByVariante
-        .get(r.codVariante)
-        ?.find((p) => p.id === r.origStop.id && p.ordinal === r.origOrdinal);
+      const boardP = paradaForVariante.get(`${r.origStop.id}:${r.codVariante}`);
       const alightP1 = r.stop;
       const boardP2 = d.stop;
-      const alightP2 = paradasByVariante
-        .get(d.codVariante)
-        ?.find((p) => p.id === d.destStop.id && p.ordinal === d.destOrdinal);
+      const alightP2 = paradaForVariante.get(`${d.destStop.id}:${d.codVariante}`);
 
       if (!boardP || !alightP2) continue;
 
@@ -398,7 +416,7 @@ export async function comoLlegarHandler(
     paradas,
     grid,
     max_caminata_metros,
-    30
+    20
   ) as ParadaConDist[];
 
   const nearDest = findNearestParadasIndexed(
@@ -407,7 +425,7 @@ export async function comoLlegarHandler(
     paradas,
     grid,
     max_caminata_metros,
-    50
+    30
   ) as ParadaConDist[];
 
   if (nearOrigin.length === 0) {

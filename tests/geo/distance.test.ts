@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { findNearestParadas } from "../../src/geo/distance.js";
+import { getDistance } from "geolib";
+import { findNearestParadas, fastDistMeters } from "../../src/geo/distance.js";
 import { PARADAS_GEO } from "../fixtures/paradas-geo.js";
 import type { Parada } from "../../src/types/parada.js";
 
@@ -129,4 +130,33 @@ describe("findNearestParadas", () => {
     expect(typeof r.linea).toBe("string");
     expect(typeof r.distancia_metros).toBe("number");
   });
+});
+
+describe("fastDistMeters vs geolib.getDistance", () => {
+  const POINTS: [number, number, number, number][] = [
+    // Tres Cruces → Ciudad Vieja (~3.1km)
+    [-34.8937, -56.1675, -34.9065, -56.2005],
+    // Short distance (~150m)
+    [-34.9060, -56.1880, -34.9070, -56.1870],
+    // Same point
+    [-34.9, -56.2, -34.9, -56.2],
+    // Across Montevideo (~10km)
+    [-34.85, -56.10, -34.92, -56.22],
+  ];
+
+  for (const [lat1, lon1, lat2, lon2] of POINTS) {
+    it(`error <1% for (${lat1},${lon1})→(${lat2},${lon2})`, () => {
+      const fast = fastDistMeters(lat1, lon1, lat2, lon2);
+      const precise = getDistance(
+        { latitude: lat1, longitude: lon1 },
+        { latitude: lat2, longitude: lon2 }
+      );
+      if (precise === 0) {
+        expect(fast).toBeLessThan(1);
+      } else {
+        const errorPct = Math.abs(fast - precise) / precise;
+        expect(errorPct).toBeLessThan(0.01);
+      }
+    });
+  }
 });

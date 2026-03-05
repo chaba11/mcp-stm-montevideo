@@ -1,6 +1,20 @@
-import { getDistance } from "geolib";
 import type { Parada } from "../types/parada.js";
 import { getCandidates, type SpatialGrid } from "./spatial-grid.js";
+
+/**
+ * Fast flat-earth distance approximation in meters.
+ * Accurate to <0.3% error at Montevideo's latitude (~-34.9°).
+ */
+export function fastDistMeters(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const dlat = (lat2 - lat1) * 111320;
+  const dlon = (lon2 - lon1) * 111320 * Math.cos((lat1 * Math.PI) / 180);
+  return Math.sqrt(dlat * dlat + dlon * dlon);
+}
 
 export interface ParadaConDistancia extends Parada {
   distancia_metros: number;
@@ -20,10 +34,7 @@ export function findNearestParadas(
   const results: ParadaConDistancia[] = [];
 
   for (const parada of paradas) {
-    const distancia = getDistance(
-      { latitude: lat, longitude: lon },
-      { latitude: parada.lat, longitude: parada.lng }
-    );
+    const distancia = fastDistMeters(lat, lon, parada.lat, parada.lng);
     if (distancia <= radioMetros) {
       results.push({ ...parada, distancia_metros: distancia });
     }
@@ -50,10 +61,7 @@ export function findNearestParadasIndexed(
 
   for (const c of candidates) {
     const parada = paradas[c.index];
-    const distancia = getDistance(
-      { latitude: lat, longitude: lon },
-      { latitude: c.lat, longitude: c.lng }
-    );
+    const distancia = fastDistMeters(lat, lon, c.lat, c.lng);
     if (distancia <= radioMetros) {
       results.push({ ...parada, distancia_metros: distancia });
     }
