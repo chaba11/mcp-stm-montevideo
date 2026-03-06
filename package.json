@@ -1,6 +1,6 @@
 {
   "name": "mcp-stm-montevideo",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "MCP server for Montevideo's public bus network (STM) — consult stop schedules, routes and arrivals / Servidor MCP para el sistema de transporte de Montevideo",
   "type": "module",
   "main": "dist/index.js",
