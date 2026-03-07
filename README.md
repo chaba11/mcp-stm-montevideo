@@ -12,6 +12,12 @@ The goal is to make city infrastructure data accessible through conversational i
 
 ---
 
+## Demo
+
+<video src="https://github.com/chaba11/mcp-stm-montevideo/raw/main/assets/stm-demo.mp4" controls width="100%"></video>
+
+---
+
 ## Features
 
 - Exposes Montevideo STM transport data as MCP tools
