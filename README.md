@@ -1,217 +1,153 @@
-# mcp-stm-montevideo
+# MCP STM Montevideo
 
-**ES:** Servidor MCP para el Sistema de Transporte Metropolitano (STM) de Montevideo, Uruguay. Permite que los LLMs respondan preguntas sobre horarios, recorridos y paradas del transporte público.
+![Node](https://img.shields.io/badge/node.js-20+-green)
+![TypeScript](https://img.shields.io/badge/typescript-blue)
+![MCP](https://img.shields.io/badge/MCP-server-purple)
 
-**EN:** MCP server for Montevideo's Metropolitan Transit System (STM). Lets LLMs answer questions about bus schedules, routes, and stops in real time.
+MCP server exposing Montevideo public transportation data (STM) as tools for AI assistants.
 
-**Landing:** [landing.stm.paltickets.uy](https://landing.stm.paltickets.uy) · **API:** [stm.paltickets.uy](https://stm.paltickets.uy)
+This project allows AI agents and LLM-based applications to query public transport information such as bus routes, stops, arrivals, and connections in Montevideo through the Model Context Protocol (MCP).
 
----
-
-## Instalación / Installation
-
-```bash
-npx mcp-stm-montevideo@latest
-```
-
-Los datos se descargan automáticamente desde los datos abiertos de la Intendencia de Montevideo (CKAN). La primera ejecución tarda ~60s mientras descarga y cachea en disco (`~/.cache/mcp-stm-montevideo/`). Las ejecuciones siguientes cargan desde el caché en ~2s. El servidor pre-carga los datos al iniciar para que la primera consulta sea instantánea.
-
-*Data downloads automatically from Montevideo's open data portal (CKAN). First run takes ~60s to download and cache to disk (`~/.cache/mcp-stm-montevideo/`). Subsequent runs load from disk cache in ~2s. The server warms up data on startup so the first query is instant.*
+The goal is to make city infrastructure data accessible through conversational interfaces.
 
 ---
 
-## Configuración / Configuration
+## Features
 
-### Claude Desktop
+- Exposes Montevideo STM transport data as MCP tools
+- Supports natural language queries about routes, stops, arrivals, and trip planning
+- Designed for AI assistants such as Claude Desktop, Cursor, and other MCP clients
+- Includes a REST API layer in addition to MCP
+- Built with Node.js and TypeScript
+- Integrates public STM datasets into a developer-friendly interface
 
-Agrega esto a `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+---
 
-```json
-{
-  "mcpServers": {
-    "stm-montevideo": {
-      "command": "npx",
-      "args": ["-y", "mcp-stm-montevideo@latest"]
-    }
-  }
-}
+## Example
+
+**User query**
+
+```text
+How do I go from Facultad de Ingenieria to Plaza Independencia?
 ```
 
-### Cursor
+**Assistant response**
 
-En `.cursor/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "stm-montevideo": {
-      "command": "npx",
-      "args": ["-y", "mcp-stm-montevideo@latest"]
-    }
-  }
-}
-```
-
-### Claude Code
-
-En `.mcp.json` en la raíz de tu proyecto:
-
-```json
-{
-  "mcpServers": {
-    "stm-montevideo": {
-      "command": "npx",
-      "args": ["-y", "mcp-stm-montevideo@latest"]
-    }
-  }
-}
+```text
+Take a bus from the stops near Bv. Espana and continue toward Ciudad Vieja.
+Get off near Plaza Independencia.
 ```
 
 ---
 
-## Herramientas disponibles / Available Tools
+## Architecture
 
-| Herramienta | Descripción |
-|-------------|-------------|
-| `buscar_parada` | Busca paradas cercanas a una dirección, intersección o coordenadas GPS |
-| `proximos_buses` | Muestra los próximos ómnibus que pasan por una parada |
-| `recorrido_linea` | Muestra el recorrido completo de una línea con todas sus paradas |
-| `ubicacion_bus` | Posición en tiempo real de una línea (cuando esté disponible) |
-| `como_llegar` | Calcula la mejor ruta en transporte público entre dos puntos |
+The server exposes STM transport data through MCP tools that AI assistants can call while answering user requests.
 
----
-
-## REST API
-
-El servidor expone una API REST además del protocolo MCP. Base URL: `https://stm.paltickets.uy`
-
-*The server exposes a REST API alongside the MCP protocol. Base URL: `https://stm.paltickets.uy`*
-
-| Endpoint | Método | Descripción |
-|----------|--------|-------------|
-| `/api/paradas/buscar` | GET | Buscar paradas cercanas / Search nearby stops |
-| `/api/buses/proximos` | GET | Próximos ómnibus en una parada / Next buses at a stop |
-| `/api/lineas/:numero/recorrido` | GET | Recorrido de una línea / Line route |
-| `/api/buses/:linea/ubicacion` | GET | Ubicación GPS de una línea / Line GPS location |
-| `/api/como-llegar` | POST | Calcular ruta entre dos puntos / Route between two points |
-| `/api/health` | GET | Estado del servidor / Server health |
-| `/api/docs` | GET | Swagger UI interactivo / Interactive Swagger UI |
-| `/api/openapi.yaml` | GET | Especificación OpenAPI 3.1 / OpenAPI 3.1 spec |
-
----
-
-## MCP remoto / Remote MCP
-
-Endpoint: `https://stm.paltickets.uy/mcp` (Streamable HTTP, stateless)
-
-Para usar el MCP remoto en Claude Desktop o Claude.ai, usa `"url"` en vez de `"command"`:
-
-*To use remote MCP in Claude Desktop or Claude.ai, use `"url"` instead of `"command"`:*
-
-```json
-{
-  "mcpServers": {
-    "stm-montevideo": {
-      "url": "https://stm.paltickets.uy/mcp"
-    }
-  }
-}
+```text
+AI Assistant
+     |
+     v
+MCP Client
+     |
+     v
+MCP STM Montevideo Server
+     |
+     v
+STM Transport Data
 ```
 
 ---
 
-## ChatGPT Actions
+## Installation
 
-La API sirve como backend para GPTs de ChatGPT mediante Actions. Apunta a la especificación OpenAPI en `https://stm.paltickets.uy/api/openapi.yaml` al configurar el GPT.
-
-*The API serves as a backend for ChatGPT GPTs via Actions. Point to the OpenAPI spec at `https://stm.paltickets.uy/api/openapi.yaml` when configuring the GPT.*
-
----
-
-## Ejemplos de uso / Usage Examples
-
-**¿Cuándo pasa el próximo 181?**
-> "¿A qué hora pasa el próximo 181 por Bv España y Libertad?"
-
-```
-→ buscar_parada(calle1="Bv España", calle2="Libertad")
-→ proximos_buses(parada_id=..., linea="181")
-```
-
-**¿Qué líneas pasan cerca?**
-> "¿Qué líneas de ómnibus pasan cerca de Tres Cruces?"
-
-```
-→ buscar_parada(latitud=-34.893, longitud=-56.163, radio_metros=300)
-```
-
-**¿Cómo llego en bondi?**
-> "¿Cómo llego de Ciudad Vieja a Pocitos en ómnibus?"
-
-```
-→ como_llegar(origen_calle1="Ciudad Vieja", destino_calle1="Pocitos")
-```
-
-**Ver el recorrido completo de una línea**
-> "¿Cuáles son todas las paradas de la línea D10?"
-
-```
-→ recorrido_linea(linea="D10")
-```
-
----
-
-## Fuentes de datos / Data Sources
-
-Los datos provienen de los **Datos Abiertos de la Intendencia de Montevideo**:
-
-- [Portal CKAN](https://ckan.montevideo.gub.uy) — `datos-abiertos.montevideo.gub.uy`
-- Dataset horarios: `horarios-de-omnibus-urbanos-por-parada-stm`
-- Dataset paradas: coordenadas en EPSG:32721 (UTM Zone 21S), convertidas a WGS84
-- Dataset recorridos y líneas: origen/destino de cada variante
-
-Los datos se cachean en disco por 6 meses y en memoria por 1 mes. El caché en disco (`~/.cache/mcp-stm-montevideo/`) persiste entre reinicios del servidor, eliminando la descarga de ~60s en ejecuciones posteriores.
-
-*Data is cached to disk for 6 months and in memory for 1 month. The disk cache (`~/.cache/mcp-stm-montevideo/`) persists across server restarts, eliminating the ~60s download on subsequent runs.*
-
----
-
-## Desarrollo / Development
+Clone the repository:
 
 ```bash
 git clone https://github.com/chaba11/mcp-stm-montevideo
 cd mcp-stm-montevideo
+```
+
+Install dependencies:
+
+```bash
 npm install
+```
+
+Build the project:
+
+```bash
 npm run build
-npm run test
-npm run lint
 ```
 
-Para iniciar la REST API localmente:
-
-*To start the REST API locally:*
+Run the MCP server:
 
 ```bash
-npm run start:api     # producción
-npm run dev:api       # desarrollo con hot reload
+npm run start
 ```
 
-Para ejecutar los tests de integración con datos reales (requiere internet):
+Run the REST API locally:
 
 ```bash
-npm run test:integration
+npm run dev:api
 ```
 
 ---
 
-## Contribuir / Contributing
+## Example MCP Tools
 
-Los issues y pull requests son bienvenidos. Los bugs encontrados con datos reales son especialmente valiosos.
+Example tools exposed by the server:
 
-*Issues and pull requests welcome. Bugs found with real data are especially valuable.*
+- `buscar_parada`
+- `proximos_buses`
+- `recorrido_linea`
+- `ubicacion_bus`
+- `como_llegar`
+
+These tools allow AI assistants to retrieve structured transportation data and generate natural language responses for users.
 
 ---
 
-## Licencia / License
+## Use Cases
 
-MIT © 2026 chaba11
+- AI assistants answering public transport questions
+- Conversational city navigation tools
+- Smart travel assistants
+- Urban mobility integrations for LLM applications
+- MCP and API-based transit experiences
+
+---
+
+## Tech Stack
+
+- Node.js
+- TypeScript
+- MCP (Model Context Protocol)
+- Hono
+- OpenAPI / Swagger
+- Public STM transport data
+
+---
+
+## Why this project
+
+As AI assistants become more common, exposing real-world systems through MCP servers enables natural language interaction with infrastructure and public services.
+
+This project explores how public transportation systems can integrate with the AI tooling ecosystem in a practical, developer-friendly way.
+
+---
+
+## Links
+
+- GitHub: [github.com/chaba11/mcp-stm-montevideo](https://github.com/chaba11/mcp-stm-montevideo)
+- Live API: [stm.paltickets.uy](https://stm.paltickets.uy)
+- API Docs: [stm.paltickets.uy/api/docs](https://stm.paltickets.uy/api/docs)
+
+---
+
+## Author
+
+**Santiago Chabert**  
+Montevideo, Uruguay
+
+Full-stack developer focused on Node.js, TypeScript, cloud infrastructure, and AI tooling.
